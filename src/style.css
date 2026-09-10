@@ -472,12 +472,14 @@ body.inspection-mode #controls {
 }
 
 #unsupported {
-  z-index: 20;
+  z-index: 40;
+  pointer-events: auto;
+  overflow-y: auto;
   display: grid;
   place-items: center;
   padding: 24px;
-  background: #010207;
-  text-align: center;
+  background: radial-gradient(ellipse at 50% 35%, #24172f 0%, #0b0811 48%, #010207 100%);
+  text-align: left;
 }
 
 #unsupported[hidden] {
@@ -605,3 +607,21 @@ body.hud-hidden #controls {
 
 #upper-controls #upper-matter-control { justify-content: flex-start; align-items: center; gap: 8px; margin-top: 8px; cursor: pointer; }
 #upper-matter-toggle { accent-color: #c6b5ed; }
+
+
+.scene-unavailable #app > :not(#unsupported) { visibility: hidden !important; }
+.fallback-card { width: min(100%, 560px); margin: auto; padding: 32px 0; }
+.fallback-brand { color: #c8addd; font-size: 11px; letter-spacing: .22em; }
+.fallback-card h1 { margin: 28px 0 20px; font-size: clamp(28px, 5vw, 44px); line-height: 1.12; font-weight: 550; text-wrap: balance; outline: none; }
+.fallback-message { color: #eee7f4; font-size: 17px; line-height: 1.6; }
+.fallback-hint { margin-top: 16px; color: #b2a5be; font-size: 14px; line-height: 1.65; }
+.fallback-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; }
+.fallback-actions a, .fallback-actions button { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 12px 18px; border: 1px solid #655373; border-radius: 8px; color: #f6effc; background: #21162c; text-decoration: none; font-size: 14px; cursor: pointer; }
+.fallback-actions a { color: #170d20; background: #e3ccf4; border-color: #e3ccf4; }
+.fallback-actions a:hover { background: #f0e2fb; }
+.fallback-actions button:hover { background: #352242; }
+.fallback-actions :focus-visible, #explore-scene:focus-visible { outline: 2px solid #fff; outline-offset: 4px; }
+.landing-mode #inspection, .landing-mode #performance-monitor, .landing-mode #controls, .landing-mode #intro, .landing-mode #captions { display: none !important; }
+#explore-scene { position: fixed; z-index: 18; right: max(24px, env(safe-area-inset-right)); bottom: max(24px, env(safe-area-inset-bottom)); padding: 12px 18px; border: 1px solid #c9b3e044; border-radius: 24px; background: #0b0714b8; color: #e3d8ed; font-size: 13px; text-decoration: none; backdrop-filter: blur(12px); }
+#explore-scene[hidden] { display: none; }
+#explore-scene:hover { border-color: #c9b3e0; background: #24172f; }

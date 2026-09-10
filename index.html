@@ -34,7 +34,7 @@
         </article>
       </section>
 
-      <section id="unsupported" hidden>
+      <section id="unsupported" role="alert" aria-labelledby="fallback-title" hidden>
         <p>Этой сцене нужен браузер с WebGPU.</p>
       </section>
 
@@ -107,6 +107,8 @@
         </div>
         <small id="perf-resolution" class="performance-resolution">RENDER —</small>
       </aside>
+
+      <a id="explore-scene" href="?inspect=upper" hidden>Осмотреть сцену <span aria-hidden="true">↗</span></a>
 
       <nav id="controls" aria-label="Cinematic controls">
         <button id="play" type="button" aria-label="Pause">Ⅱ</button>

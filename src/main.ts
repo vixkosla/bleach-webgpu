@@ -41,6 +41,7 @@ import { createCityHaze } from './materials/cityHaze';
 import { pulse, smoothstep } from './utils/math';
 import { watchDeviceLoss } from './utils/deviceLoss';
 import { chooseRenderPixelRatio } from './utils/renderBudget';
+import { showWebGpuFallback } from './ui/webgpuFallback';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#cinema');
 const loading = document.querySelector<HTMLElement>('#loading');
@@ -197,12 +198,20 @@ const init = async (): Promise<void> => {
     // Paint the status before synchronous geometry work occupies this thread.
     await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
   };
-  if (!navigator.gpu) {
-    loading.hidden = true;
-    unsupported.hidden = false;
-    unsupported.innerHTML = isSecureContext
-      ? '<p>В этом браузере WebGPU недоступен. Откройте сцену в актуальном Chrome.</p>'
-      : '<p>WebGPU заблокирован обычным HTTP. Для телефона откройте HTTPS-ссылку проекта.</p>';
+  if (!isSecureContext || !navigator.gpu) {
+    showWebGpuFallback(isSecureContext ? 'browser' : 'https');
+    return;
+  }
+  // API presence alone does not guarantee an available GPU. Stop before
+  // Three's automatic WebGL fallback: this scene requires WebGPU features.
+  await showLoading('Проверяем поддержку WebGPU…');
+  try {
+    if (!await navigator.gpu.requestAdapter()) {
+      showWebGpuFallback('adapter');
+      return;
+    }
+  } catch {
+    showWebGpuFallback('adapter');
     return;
   }
 
@@ -213,6 +222,12 @@ const init = async (): Promise<void> => {
   // it is the default for every inspection view (`?ao-only=0` restores the
   // older lit/outline route). The cinematic keeps its own explicit choice.
   const filmParams = url.searchParams.has('film') || url.searchParams.has('t') || url.searchParams.has('ft');
+  const landingMode = !requestedInspectionPreset && !filmParams;
+  document.body.classList.toggle('landing-mode', landingMode);
+  canvas.tabIndex = landingMode ? -1 : 0;
+  if (landingMode) canvas.setAttribute('aria-label', 'Цитадель и чёрная луна среди движущихся облаков');
+  const explore = document.querySelector<HTMLElement>('#explore-scene');
+  if (explore) explore.hidden = !landingMode;
   const aoOnly = upperRequested || (filmParams
     ? url.searchParams.has('ao-only')
     : url.searchParams.get('ao-only') !== '0');
@@ -224,10 +239,8 @@ const init = async (): Promise<void> => {
   const requestedMotionTime = Number(url.searchParams.get('mt') ?? upperTime);
   let upperMotionTime = Number.isFinite(requestedMotionTime)
     ? Math.max(0, Math.min(86400, requestedMotionTime)) : upperTime;
-  // The free camera is the default working mode while the city is being
-  // rebuilt iteratively. The cinematic starts only when explicitly requested
-  // via ?film, ?t= or ?ft= (the capture scripts pass ?t=, so hardware
-  // keyframes are unaffected).
+  // The home page holds the selected upper shot. Explicit inspection links
+  // retain the free camera; cinematic captures keep their ?film/?t/?ft route.
   const filmRequested = url.searchParams.has('film')
     || url.searchParams.has('t')
     || url.searchParams.has('ft');
@@ -235,7 +248,7 @@ const init = async (): Promise<void> => {
     ? requestedInspectionPreset
     : filmRequested
       ? null
-      : 'city';
+      : 'upper';
 
   // AO is one shared world: looking upward from any inspector must reveal
   // the event. GETSUGA is a camera preset, not a separate scene/load gate.
@@ -253,18 +266,7 @@ const init = async (): Promise<void> => {
     performanceStatus.textContent = reason === 'memory' ? 'GPU MEMORY' : reason === 'lost' ? 'GPU LOST' : 'GPU ERROR';
     performanceFps.value = performanceFrame.value = '—';
     performanceDraws.value = performanceTriangles.value = '—';
-    const message = document.createElement('p');
-    message.textContent = reason === 'memory'
-      ? 'Недостаточно видеопамяти. Сцена остановлена. Закройте другие тяжёлые 3D-вкладки и восстановите эту страницу.'
-      : reason === 'lost'
-        ? 'Потеряно соединение с видеокартой. Сцена остановлена. Закройте другие тяжёлые 3D-вкладки и восстановите эту страницу.'
-        : 'Ошибка отрисовки WebGPU. Сцена остановлена; подробности в консоли. Попробуйте восстановить страницу.';
-    const retry = document.createElement('button');
-    retry.type = 'button';
-    retry.textContent = 'Восстановить сцену';
-    retry.addEventListener('click', () => window.location.reload(), { once: true });
-    unsupported.replaceChildren(message, retry);
-    unsupported.hidden = false;
+    showWebGpuFallback(reason);
   });
   // City background remains opaque. A null-background upper scene clears to
   // transparent black for its independent premultiplied-alpha render target.
@@ -280,7 +282,18 @@ const init = async (): Promise<void> => {
   renderer.shadowMap.enabled = !aoOnly;
   renderer.shadowMap.type = THREE.PCFShadowMap;
   await showLoading('Подготавливаем сцену…');
-  await renderer.init();
+  try {
+    await renderer.init();
+  } catch (error) {
+    console.warn('WebGPU initialization failed', error);
+    showWebGpuFallback('adapter');
+    return;
+  }
+  if (!('isWebGPUBackend' in renderer.backend)) {
+    renderer.dispose();
+    showWebGpuFallback('adapter');
+    return;
+  }
   if (deviceStatus.failed) return;
   // Explicitly release this device before a same-tab reload/navigation. Do
   // not leave large GPU buffers waiting for the old document's GC.
@@ -300,7 +313,7 @@ const init = async (): Promise<void> => {
     ['height', 'uheight', -400, 40], ['frameY', 'uframe', 0.20, 0.46], ['azimuth', 'uazimuth', -60, 60],
   ] as const) {
     const value = Number(url.searchParams.get(param));
-    if (url.searchParams.has(param) && Number.isFinite(value)) upperShot[key] = Math.max(min, Math.min(max, value));
+    if (!landingMode && url.searchParams.has(param) && Number.isFinite(value)) upperShot[key] = Math.max(min, Math.min(max, value));
   }
   const director = new CinematicDirector(camera);
   const orbitControls = new OrbitControls(camera, canvas);
@@ -316,7 +329,7 @@ const init = async (): Promise<void> => {
   let inspectionCameraMoved = false;
   orbitControls.addEventListener('start', () => { inspectionCameraMoved = true; });
   const inspectionNavigation = createInspectionNavigation(
-    camera, orbitControls, () => inspectionPreset !== null,
+    camera, orbitControls, () => !landingMode && inspectionPreset !== null,
     () => { inspectionCameraMoved = true; },
   );
   const titleDirector = createTitleDirector({
@@ -711,10 +724,10 @@ const init = async (): Promise<void> => {
     setPlaying(false);
     document.body.classList.add('inspection-mode');
     document.body.classList.remove('hud-hidden');
-    inspection.hidden = false;
+    inspection.hidden = landingMode;
     scene.fog = null;
     inspectionFill.intensity = 0.08;
-    orbitControls.enabled = true;
+    orbitControls.enabled = !landingMode;
     // The old 21.6-degree upward limit silently lifted the new low camera
     // above the roofs. Allow the anime street-to-sky angle for this preset.
     orbitControls.maxPolarAngle = Math.PI * (name === 'upper' ? 0.86 : 0.62);
@@ -730,7 +743,7 @@ const init = async (): Promise<void> => {
         String(button.dataset.inspectCamera === name),
       );
     }
-    url.searchParams.set('inspect', name);
+    if (!landingMode) url.searchParams.set('inspect', name);
     url.searchParams.delete('t');
     url.searchParams.delete('ft');
     url.searchParams.delete('paused');
@@ -866,12 +879,14 @@ const init = async (): Promise<void> => {
     window.history.replaceState(null, '', url);
   });
   canvas.addEventListener('pointerdown', () => {
+    if (landingMode) return;
     if (inspectionPreset) { canvas.focus({ preventScroll: true }); return; }
     const hidden = document.body.classList.contains('hud-hidden');
     if (hidden) setHud(true);
     else setPlaying(!playing);
   });
   window.addEventListener('keydown', (event) => {
+    if (landingMode) return;
     if (event.target instanceof HTMLInputElement) return;
     if (inspectionPreset && ['1', '2', '3', '4', '5'].includes(event.key)) {
       const names: InspectionPresetName[] = ['street', 'quarter', 'city', 'citadel', 'upper'];
@@ -1008,7 +1023,5 @@ const init = async (): Promise<void> => {
 
 void init().catch((error: unknown) => {
   console.error(error);
-  loading.hidden = true;
-  unsupported.hidden = false;
-  unsupported.innerHTML = '<p>WebGPU-сцена не запустилась. Подробности находятся в консоли браузера.</p>';
+  showWebGpuFallback('render');
 });
