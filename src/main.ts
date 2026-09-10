@@ -42,6 +42,7 @@ import { pulse, smoothstep } from './utils/math';
 import { watchDeviceLoss } from './utils/deviceLoss';
 import { chooseRenderPixelRatio } from './utils/renderBudget';
 import { showWebGpuFallback } from './ui/webgpuFallback';
+import { hasWebGPUDevice, WebGPUOnlyRenderer } from './utils/webgpuRenderer';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#cinema');
 const loading = document.querySelector<HTMLElement>('#loading');
@@ -253,7 +254,7 @@ const init = async (): Promise<void> => {
   // AO is one shared world: looking upward from any inspector must reveal
   // the event. GETSUGA is a camera preset, not a separate scene/load gate.
   const sharedSky = aoOnly && inspectionPreset !== null;
-  const renderer = new THREE.WebGPURenderer({
+  const renderer = new WebGPUOnlyRenderer({
     canvas,
     antialias: true,
     alpha: false,
@@ -289,12 +290,13 @@ const init = async (): Promise<void> => {
     showWebGpuFallback('adapter');
     return;
   }
-  if (!('isWebGPUBackend' in renderer.backend)) {
+  if (!hasWebGPUDevice(renderer)) {
     renderer.dispose();
     showWebGpuFallback('adapter');
     return;
   }
   if (deviceStatus.failed) return;
+  document.body.dataset.renderer = 'webgpu';
   // Explicitly release this device before a same-tab reload/navigation. Do
   // not leave large GPU buffers waiting for the old document's GC.
   window.addEventListener('pagehide', () => renderer.dispose(), { once: true });
@@ -734,7 +736,9 @@ const init = async (): Promise<void> => {
     camera.position.fromArray(preset.position);
     orbitControls.target.fromArray(preset.target);
     camera.fov = preset.fov;
-    camera.far = name === 'upper' ? 4200 : 2200;
+    // Every AO preset shares the sky. Its volume exit faces must stay inside
+    // the frustum, including when the city camera is raised above the island.
+    camera.far = sharedSky ? 4200 : 2200;
     camera.updateProjectionMatrix();
     orbitControls.update();
     for (const button of inspectionCameraButtons) {
@@ -1007,8 +1011,16 @@ const init = async (): Promise<void> => {
     uiIdleTimer += delta;
     if (playing && !inspectionPreset && uiIdleTimer > 4 && url.searchParams.get('hud') !== '1') setHud(false);
 
-    if (inspectionPreset) inspectionRenderPipeline.render();
-    else filmRenderPipeline.render();
+    try {
+      if (inspectionPreset) inspectionRenderPipeline.render();
+      else filmRenderPipeline.render();
+    } catch (error) {
+      console.error('WebGPU frame failed', error);
+      void renderer.setAnimationLoop(null);
+      showWebGpuFallback('render');
+      return;
+    }
+    if (deviceStatus.failed) return;
     if (firstFrame) {
       firstFrame = false;
       loading.hidden = true;

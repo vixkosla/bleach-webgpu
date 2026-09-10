@@ -3,7 +3,7 @@ type FallbackReason = 'browser' | 'https' | 'adapter' | 'memory' | 'lost' | 'ren
 const messages: Record<FallbackReason, { title: string; message: string; hint: string }> = {
   browser: {
     title: 'Для этой сцены нужен WebGPU',
-    message: 'Откройте сайт в браузере с поддержкой WebGPU — например, в актуальной версии Google Chrome.',
+    message: 'В этом браузере WebGPU недоступен. Откройте сайт в любом браузере с работающей поддержкой WebGPU.',
     hint: 'Включите аппаратное ускорение в настройках браузера. Если ссылка открылась внутри мессенджера, перенесите её в обычный браузер.',
   },
   https: {
@@ -39,6 +39,7 @@ export const showWebGpuFallback = (reason: FallbackReason): void => {
   const content = messages[reason];
   document.body.dataset.ready = 'false';
   document.body.dataset.gpu = reason;
+  delete document.body.dataset.renderer;
   document.body.classList.add('scene-unavailable');
   const loading = document.querySelector<HTMLElement>('#loading');
   if (loading) loading.hidden = true;
@@ -62,16 +63,17 @@ export const showWebGpuFallback = (reason: FallbackReason): void => {
   hint.textContent = content.hint;
   const actions = document.createElement('div');
   actions.className = 'fallback-actions';
-  const browser = document.createElement('a');
-  browser.href = reason === 'https'
-    ? `https://bleach-webgpu.vercel.app/${window.location.search}${window.location.hash}`
-    : 'https://www.google.com/chrome/';
-  browser.textContent = reason === 'https' ? 'Открыть HTTPS-версию' : 'Скачать Google Chrome';
+  if (reason === 'https') {
+    const secureLink = document.createElement('a');
+    secureLink.href = `https://bleach-webgpu.vercel.app/${window.location.search}${window.location.hash}`;
+    secureLink.textContent = 'Открыть HTTPS-версию';
+    actions.append(secureLink);
+  }
   const retry = document.createElement('button');
   retry.type = 'button';
   retry.textContent = 'Проверить снова';
   retry.addEventListener('click', () => window.location.reload(), { once: true });
-  actions.append(browser, retry);
+  actions.append(retry);
   card.append(brand, title, message, hint, actions);
   root.replaceChildren(card);
   root.hidden = false;
