@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#010207" />
+    <link rel="icon" href="data:," />
+    <title>Black Moon — Wahr Welt WebGPU Tribute</title>
+    <meta name="description" content="Интерактивный WebGPU tribute по мотивам BLEACH: город Wahr Welt, фиолетовая цитадель и чёрная луна среди живых облаков." />
+  </head>
+  <body>
+    <main id="app">
+      <canvas id="cinema" tabindex="0" aria-label="3D-сцена: WASD — перемещение, Q/E — высота камеры"></canvas>
+      <section id="loading" role="status" aria-live="polite">
+        <div>
+          <span class="loading-title">WAHR WELT</span>
+          <p id="loading-message">Открываем сцену…</p>
+          <span class="loading-line" aria-hidden="true"></span>
+        </div>
+      </section>
+      <div id="flash" aria-hidden="true"></div>
+      <div id="grade" aria-hidden="true"></div>
+      <div id="letterbox" aria-hidden="true"><i></i><i></i></div>
+
+      <section id="intro" aria-live="polite">
+        <p>TYPEGPU / WEBGPU STUDY 001</p>
+        <h1>BLACK MOON</h1>
+        <span>SEIREITEI → WAHR WELT</span>
+      </section>
+      <section id="captions" aria-hidden="true">
+        <article id="caption-card">
+          <span id="caption-kicker"></span>
+          <p id="caption-line"></p>
+        </article>
+      </section>
+
+      <section id="unsupported" hidden>
+        <p>Этой сцене нужен браузер с WebGPU.</p>
+      </section>
+
+      <aside id="inspection" aria-label="Inspection cameras" hidden>
+        <span>ARCHITECTURE INSPECTION</span>
+        <div class="inspection-cameras">
+          <button type="button" data-inspect-camera="street">1 STREET</button>
+          <button type="button" data-inspect-camera="quarter">2 QUARTER</button>
+          <button type="button" data-inspect-camera="city">3 CITY</button>
+          <button type="button" data-inspect-camera="citadel">4 CITADEL</button>
+          <button type="button" data-inspect-camera="upper" title="Финальный ракурс снизу на цитадель и луну">5 GETSUGA</button>
+        </div>
+        <small>DRAG — ROTATE · WHEEL — ZOOM · RIGHT DRAG — PAN</small>
+        <div id="camera-navigation" aria-label="Перемещение камеры">
+          <small>WASD — ПЕРЕМЕЩЕНИЕ · Q/E — ВЫСОТА · SHIFT — БЫСТРЕЕ</small>
+          <div class="camera-height-controls">
+            <button type="button" data-camera-lift="-1" title="Опустить камеру: Q или удерживайте кнопку" aria-label="Опустить камеру">↓ НИЖЕ</button>
+            <label>ВЫСОТА <output id="camera-altitude">—</output></label>
+            <button type="button" data-camera-lift="1" title="Поднять камеру: E или удерживайте кнопку" aria-label="Поднять камеру">↑ ВЫШЕ</button>
+          </div>
+        </div>
+        <label id="sky-layer-control" hidden>
+          <input id="sky-layer-toggle" type="checkbox" checked /> НЕБО / GETSUGA
+        </label>
+        <div id="upper-controls" hidden>
+          <small>GETSUGA · LIVING STORM STUDY</small>
+          <div class="inspection-cameras" aria-label="Upper event phases">
+            <button type="button" data-upper-beat="0">CHARGE</button>
+            <button type="button" data-upper-beat="1">RELEASE</button>
+            <button type="button" data-upper-beat="2">OPENING</button>
+            <button type="button" data-upper-beat="3">HOLD</button>
+          </div>
+          <label for="upper-timeline">EVENT TIME <output id="upper-time">21.80 s</output></label>
+          <input id="upper-timeline" type="range" min="11.5" max="26" step="0.01" value="21.8" />
+          <button id="upper-motion" type="button" aria-pressed="true" title="Движение облаков независимо от выбранной фазы">Ⅱ ПАУЗА ОБЛАКОВ</button>
+          <label id="upper-matter-control"><input id="upper-matter-toggle" type="checkbox" checked /> ЛУНА И МАТЕРИЯ</label>
+          <details id="upper-camera-controls">
+            <summary>КАМЕРА ФИНАЛА · <output id="upper-lens-summary">80°</output></summary>
+            <div class="inspection-cameras" aria-label="Объектив финального кадра">
+              <button type="button" data-upper-shot="depth">90° ГЛУБИНА</button>
+              <button type="button" data-upper-shot="final" aria-pressed="true">80° ТВОЙ РАКУРС</button>
+              <button type="button" data-upper-shot="compressed">68° СЖАТИЕ</button>
+            </div>
+            <label>FOV <output id="upper-fov-value">80°</output></label>
+            <input id="upper-fov" aria-label="FOV финального кадра" type="range" min="30" max="95" step="1" value="80" />
+            <label>ДИСТАНЦИЯ <output id="upper-distance-value">415</output></label>
+            <input id="upper-distance" aria-label="Дистанция до цитадели" type="range" min="220" max="2200" step="5" value="415" />
+            <label>ВЫСОТА ОТ ВЕРШИНЫ <output id="upper-height-value">−246</output></label>
+            <input id="upper-height" aria-label="Высота относительно вершины цитадели" type="range" min="-400" max="40" step="1" value="-246" />
+            <label>ПОВОРОТ <output id="upper-azimuth-value">16°</output></label>
+            <input id="upper-azimuth" aria-label="Поворот камеры вокруг цитадели" type="range" min="-60" max="60" step="1" value="16" />
+            <label>ЛУНА В КАДРЕ <output id="upper-frame-value">28%</output></label>
+            <input id="upper-frame" aria-label="Положение центра луны от верха кадра" type="range" min="20" max="46" step="1" value="28" />
+          </details>
+        </div>
+        <button id="film-mode" type="button">RETURN TO FILM</button>
+      </aside>
+
+      <aside id="performance-monitor" data-state="pending" aria-label="Live performance monitor">
+        <div class="performance-header">
+          <span>LIVE LOAD</span>
+          <strong id="perf-status">WARMUP</strong>
+        </div>
+        <div class="performance-grid">
+          <span><small>FPS</small><output id="perf-fps">—</output></span>
+          <span><small>FRAME</small><output id="perf-frame">—</output></span>
+          <span><small>DRAWS</small><output id="perf-draws">—</output></span>
+          <span><small>TRIS</small><output id="perf-triangles">—</output></span>
+          <span><small>GPU MEM</small><output id="perf-memory">—</output></span>
+        </div>
+        <small id="perf-resolution" class="performance-resolution">RENDER —</small>
+      </aside>
+
+      <nav id="controls" aria-label="Cinematic controls">
+        <button id="play" type="button" aria-label="Pause">Ⅱ</button>
+        <input id="timeline" type="range" min="0" max="26" step="0.001" value="0" aria-label="Timeline" />
+        <output id="time">00:00 / 00:26</output>
+        <button id="inspect-mode" type="button" aria-label="Inspect architecture">INSPECT</button>
+        <button id="hud" type="button" aria-label="Hide controls">HIDE UI</button>
+      </nav>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

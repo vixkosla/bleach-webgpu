@@ -1,0 +1,37 @@
+{
+  "name": "bleach-webgpu-cinematic",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "typecheck": "tsc --noEmit",
+    "capture:storyboard": "node scripts/capture.mjs 0 5.5 9.5 13 15.4 18.5 22 25.2",
+    "audit:playback": "node scripts/audit-playback.mjs",
+    "audit:citadel": "node --experimental-transform-types --no-warnings --loader ./scripts/resolve-ts.mjs scripts/audit-citadel.mjs",
+    "audit:facade": "node --experimental-transform-types --no-warnings --loader ./scripts/resolve-ts.mjs scripts/audit-citadel-facade.mjs",
+    "audit:atmosphere": "node --experimental-transform-types --no-warnings scripts/audit-upper.mjs && node --experimental-transform-types --no-warnings scripts/audit-cloud-detail.mjs",
+    "check": "pnpm typecheck && pnpm audit:citadel && pnpm audit:facade && pnpm audit:atmosphere"
+  },
+  "dependencies": {
+    "@typegpu/three": "0.12.1",
+    "delaunator": "^5.1.0",
+    "three": "0.185.1",
+    "typegpu": "0.12.3"
+  },
+  "devDependencies": {
+    "@types/three": "0.185.4",
+    "@webgpu/types": "0.1.72",
+    "playwright-core": "1.62.1",
+    "typescript": "7.0.2",
+    "unplugin-typegpu": "0.12.2",
+    "vite": "8.2.2"
+  },
+  "packageManager": "pnpm@11.11.0",
+  "description": "Interactive WebGPU fan-art study: Wahr Welt, a violet citadel, and a black crescent in a living storm.",
+  "engines": {
+    "node": ">=22.15.0 <23"
+  }
+}
