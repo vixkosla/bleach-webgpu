@@ -5,14 +5,23 @@ import {SceneTourDirector,SCENE_TOUR_FRAMES} from '../src/cinematic/SceneTourDir
 import {createBlockoutCity} from '../src/scene/worldBlockout.ts';
 import {createUpperLayout} from '../src/scene/upperEvent.ts';
 import {CITADEL_WORLD_SCALE,CITADEL_UPPER_ANCHOR} from '../src/scene/citadelGeometry.ts';
+import {createRoundedCrescentGeometry} from '../src/scene/upperCrescent.ts';
 import {CITY_DECK_Y,TOWER_Z} from '../src/scene/constants.ts';
 const scale=new T.Vector3(...CITADEL_WORLD_SCALE),shift=new T.Vector3(0,CITY_DECK_Y*(1-scale.y),TOWER_Z);
 const crown=new T.Vector3(...CITADEL_UPPER_ANCHOR).add(new T.Vector3(0,CITY_DECK_Y,0)).multiply(scale).add(shift),layout=createUpperLayout(crown);
+const moonPoints=createRoundedCrescentGeometry().getAttribute('position'),moonPoint=new T.Vector3();
 const city=createBlockoutCity(),flight=new FrameFlight(city,layout),report=[];
 assert.deepEqual(SCENE_TOUR_FRAMES.map(f=>f.time),[0,7,16.5,22,38,54,66]);
 for(const aspect of [1.5,390/844]){
  const camera=new T.PerspectiveCamera(60,aspect,.12,4200),dest=camera.clone(),tour=new SceneTourDirector(camera,layout),preview=new SceneTourDirector(dest,layout);
  tour.update(22);const old=camera.position.distanceTo(tour.target);tour.updateFrame(22);assert(Math.abs(camera.position.distanceTo(tour.target)/old-1.16)<1e-8);
+ tour.updateFrame(38);let lunarTop=-Infinity,lunarWidth=0;
+ for(let i=0;i<moonPoints.count;i++){
+  moonPoint.fromBufferAttribute(moonPoints,i).multiplyScalar(layout.radius).applyQuaternion(layout.orientation).add(layout.center).project(camera);
+  lunarTop=Math.max(lunarTop,moonPoint.y);lunarWidth=Math.max(lunarWidth,Math.abs(moonPoint.x));
+ }
+ assert(lunarTop>.875&&lunarTop<.905,'Above Storm moon should meet the upper picture edge with contour clearance');
+ assert(lunarWidth<.94,'Above Storm moon must remain inside portrait side edges');
  for(const from of SCENE_TOUR_FRAMES) for(const to of SCENE_TOUR_FRAMES) {
   if(from===to)continue;
   tour.updateFrame(from.time);preview.updateFrame(to.time);

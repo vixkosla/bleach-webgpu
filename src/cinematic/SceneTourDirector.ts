@@ -104,6 +104,23 @@ export class SceneTourDirector {
       this.camera.position.sub(this.target).multiplyScalar(1.16).add(this.target);
       this.camera.updateMatrixWorld(true);
     }
+    if (Math.abs(time - 38) < .001) {
+      // Descend beneath the old high perch: the moon meets the upper edge
+      // while more of the city opens below. Keep a small contour allowance.
+      this.camera.position.y -= 130;
+      this.target.y -= 130;
+      // Portrait has a taller lens. Match the same upper-edge composition
+      // by pitching down, without moving the moon or changing the storm.
+      const pitch = Math.atan(.89 * Math.tan(THREE.MathUtils.degToRad(this.camera.fov * .5)))
+        - Math.atan(.89 * Math.tan(THREE.MathUtils.degToRad(33)));
+      if (pitch > 0) {
+        const distance = this.camera.position.distanceTo(this.target);
+        this.camera.rotateX(-pitch);
+        this.camera.getWorldDirection(this.direction);
+        this.target.copy(this.camera.position).addScaledVector(this.direction, distance);
+      }
+      this.camera.updateMatrixWorld(true);
+    }
   }
 
   update(input: number): void {
