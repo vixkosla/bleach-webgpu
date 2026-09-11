@@ -21,7 +21,7 @@ import { sharpen } from 'three/addons/tsl/display/SharpenNode.js';
 import { vignette } from 'three/addons/tsl/display/CRT.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import './style.css';
-import { createQuincyInterface, createQuincyEntry } from './ui/quincyInterface';
+import { createQuincyInterface, createQuincyEntry, strikeQuincyControl } from './ui/quincyInterface';
 import { CinematicDirector } from './cinematic/CinematicDirector';
 import { SceneTourDirector, SCENE_TOUR_DURATION, SCENE_TOUR_FRAMES } from './cinematic/SceneTourDirector';
 import { FrameTransition } from './cinematic/FrameTransition';
@@ -905,6 +905,7 @@ const init = async (): Promise<void> => {
     const incomingSmear = frameTransition.amount;
     const incomingPush = frameTransition.push;
     setPlaying(false); viewMode = 'frames'; selectedFrame = SCENE_TOUR_FRAMES.indexOf(frame);
+    strikeQuincyControl(document.querySelector<HTMLButtonElement>(`[data-frame="${selectedFrame}"]`));
     travelPreviewCamera.aspect = camera.aspect;
     travelPreview!.updateFrame(frame.time);
     frameFlight!.start(camera, tour.target, travelPreviewCamera, travelPreview!.target);
