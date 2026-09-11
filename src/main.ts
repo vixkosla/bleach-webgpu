@@ -1098,13 +1098,14 @@ const init = async (): Promise<void> => {
       previousViewPoint.set(0, 0, -400).applyMatrix4(camera.matrixWorld);
       tour.update(currentTime);
       if (travelBlur) {
-        const amount = reducedMotion.matches ? 0 : frameTransition.amount;
+        const amount = reducedMotion.matches ? 0 : Math.max(frameTransition.amount,
+          viewMode === 'cinema' && playing ? tour.motionSmear : 0);
         travelBlur.amount.value = amount;
         if (amount > 0) {
           const follow = 1 - Math.exp(-delta * 8);
           if (travelPreview) {
             travelPreviewCamera.aspect = camera.aspect;
-            travelPreview.update(frameTransition.lookAheadTime);
+            travelPreview.update(frameTransition.active ? frameTransition.lookAheadTime : Math.min(filmDuration, currentTime + .25));
             travelAim.copy(travelPreviewCamera.position).sub(camera.position).transformDirection(camera.matrixWorldInverse);
             // A bounded vanishing point leads the turn, including reverse travel.
             // Positive depth avoids a projected point flipping behind the lens.

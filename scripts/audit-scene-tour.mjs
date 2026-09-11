@@ -7,6 +7,7 @@ import {CITADEL_WORLD_SCALE,createCitadelPrisms,CITADEL_UPPER_ANCHOR} from '../s
 import {prismContains} from '../src/scene/citadelPrisms.ts';
 import {createBlockoutCity} from '../src/scene/worldBlockout.ts';
 import {CITY_DECK_Y,TOWER_Z} from '../src/scene/constants.ts';
+import {islandContains} from '../src/scene/islandLayout.ts';
 const scale=new T.Vector3(...CITADEL_WORLD_SCALE),shift=new T.Vector3(0,CITY_DECK_Y*(1-scale.y),TOWER_Z);
 const crown=new T.Vector3(...CITADEL_UPPER_ANCHOR).add(new T.Vector3(0,CITY_DECK_Y,0)).multiply(scale).add(shift),layout=createUpperLayout(crown);
 assert.equal(SCENE_STORY_CUTS.length, 0, 'The entire film is one take');
@@ -28,7 +29,9 @@ for(const aspect of [1.5,390/844]){
    const top=crown.clone().add(new T.Vector3(0,6,0)).project(camera);
    assert(Math.abs(top.x)<.95&&Math.abs(top.y)<.95,`Citadel crown clipped at ${time}: ${top.toArray()}`);
   }
-  if(storyTime>=33){
+  // The coast dive intentionally transfers attention to the rock at48–62s.
+  // White-sky and full-island beats must retain the complete lunar silhouette.
+  if(storyTime>=33 && (time<=48 || time>=62)){
    for(let ring=0;ring<3;ring++)for(let j=0;j<32;j++){
     const angle=j/32*Math.PI*2,point=layout.center.clone();
     if(ring===0)point.add(new T.Vector3(Math.cos(angle)*layout.radius,Math.sin(angle)*layout.radius,0));
@@ -38,6 +41,8 @@ for(const aspect of [1.5,390/844]){
    }
   }
   local.copy(camera.position).sub(shift).divide(scale);assert(!masonry.some(p=>prismContains(p,local,-.2)),`Camera enters citadel at ${time}`);
+  if(camera.position.y<CITY_DECK_Y+3)assert(!islandContains(camera.position.x,camera.position.z-TOWER_Z,-.04),`Camera enters rocky coast at ${time}`);
+  assert(d.motionSmear>=0&&d.motionSmear<=.101,'Cinema shutter remains restrained');
   for(const box of boxes){local.copy(camera.position).applyMatrix4(box.inverse);assert(!box.bounds.containsPoint(local),`Camera enters ${box.name} at ${time}`)}
   if(previous){maxSpeed=Math.max(maxSpeed,camera.position.distanceTo(previous.p)/.05);maxTurn=Math.max(maxTurn,T.MathUtils.radToDeg(camera.quaternion.angleTo(previous.q))/.05)}
   previous={p:camera.position.clone(),q:camera.quaternion.clone()};

@@ -38,11 +38,11 @@ export class CitadelOverview {
     }
   }
 
-  sample(side: number, aspect: number): void {
+  sample(side: number, aspect: number, climb = 0): void {
     const narrow = aspect < .8, lift = narrow ? .23 : .16;
     const low = narrow ? -.42 : -.56, high = .84;
     const angle = THREE.MathUtils.lerp(-.42, .5, side);
-    this.back.set(Math.sin(angle), THREE.MathUtils.lerp(.18, .34, side), Math.cos(angle)).normalize();
+    this.back.set(Math.sin(angle), THREE.MathUtils.lerp(.18, .34, side) + climb, Math.cos(angle)).normalize();
     this.right.set(0, 1, 0).cross(this.back).normalize();
     this.up.crossVectors(this.back, this.right);
     this.fov = Math.min(96, THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(58) / 2) / Math.min(1, aspect))));
