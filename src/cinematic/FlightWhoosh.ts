@@ -15,7 +15,6 @@ export class FlightWhoosh {
     this.button.setAttribute('aria-label', 'Включить свист пролёта');
     this.button.setAttribute('aria-pressed', 'false');
     this.button.title = 'Свист при ускорениях';
-    this.button.style.cssText = 'min-width:44px;min-height:32px;padding:0 7px;font-size:11px';
     document.querySelector('#viewer-status')!.after(this.button);
     this.button.addEventListener('click', () => { void this.toggle(); });
     document.addEventListener('visibilitychange', () => { if (document.hidden) this.update(0, false, false); });
@@ -49,8 +48,8 @@ export class FlightWhoosh {
     }
   }
 
-  update(rush: number, playing: boolean, cinema: boolean): void {
-    this.button.hidden = !cinema;
+  update(rush: number, playing: boolean, _cinema: boolean): void {
+    this.button.hidden = false;
     const c = this.context;
     if (!c || c.state === 'closed') return;
     const amount = this.enabled && playing && !document.hidden ? Math.max(0, Math.min(1, rush)) : 0;

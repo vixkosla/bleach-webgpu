@@ -109,6 +109,17 @@ export class SceneTourDirector {
       // while more of the city opens below. Keep a small contour allowance.
       this.camera.position.y -= 130;
       this.target.y -= 130;
+      // Swing east (+X) and descend around the existing look pivot.
+      // A fixed-radius arc gives the lower, slightly upward-facing cradle.
+      this.direction.subVectors(this.camera.position, this.target);
+      const radius = this.direction.length();
+      const azimuth = Math.atan2(this.direction.x, this.direction.z) + THREE.MathUtils.degToRad(14);
+      const elevation = Math.asin(this.direction.y / radius) - THREE.MathUtils.degToRad(7);
+      this.direction.set(Math.sin(azimuth) * Math.cos(elevation), Math.sin(elevation), Math.cos(azimuth) * Math.cos(elevation));
+      this.camera.position.copy(this.target).addScaledVector(this.direction, radius);
+      this.target.y += 7;
+      this.camera.lookAt(this.target);
+      this.camera.rotateZ(THREE.MathUtils.degToRad(-5));
       // Portrait has a taller lens. Match the same upper-edge composition
       // by pitching down, without moving the moon or changing the storm.
       const pitch = Math.atan(.89 * Math.tan(THREE.MathUtils.degToRad(this.camera.fov * .5)))

@@ -21,6 +21,7 @@ import { sharpen } from 'three/addons/tsl/display/SharpenNode.js';
 import { vignette } from 'three/addons/tsl/display/CRT.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import './style.css';
+import { createQuincyInterface, createQuincyEntry } from './ui/quincyInterface';
 import { CinematicDirector } from './cinematic/CinematicDirector';
 import { SceneTourDirector, SCENE_TOUR_DURATION, SCENE_TOUR_FRAMES } from './cinematic/SceneTourDirector';
 import { FrameTransition } from './cinematic/FrameTransition';
@@ -248,6 +249,7 @@ const init = async (): Promise<void> => {
   if (landingMode) canvas.setAttribute('aria-label', 'Цитадель и чёрная луна среди движущихся облаков');
   const explore = document.querySelector<HTMLElement>('#scene-entry');
   if (explore) explore.hidden = !landingMode;
+  if (landingMode) createQuincyEntry();
   const aoOnly = tourMode || upperRequested || (filmParams
     ? url.searchParams.has('ao-only')
     : url.searchParams.get('ao-only') !== '0');
@@ -759,7 +761,8 @@ const init = async (): Promise<void> => {
     }
     if (value && tourMode && currentTime >= filmDuration) currentTime = 0;
     playing = value;
-    playButton.textContent = playing ? 'Ⅱ' : '▶';
+    playButton.dataset.playing = String(playing);
+    if (!tourMode) playButton.textContent = playing ? 'Ⅱ' : '▶';
     playButton.setAttribute('aria-label', playing ? 'Pause' : 'Play');
   };
   setPlaying(playing);
@@ -934,6 +937,14 @@ const init = async (): Promise<void> => {
       window.history.replaceState(null, '', url);
     },
   }) : null;
+  if (tourMode) createQuincyInterface({
+    pause: () => {
+      const prior = playing; playing = false;
+      playButton.dataset.playing = 'false'; playButton.setAttribute('aria-label', 'Play');
+      whoosh?.update(0, false, true); return prior;
+    },
+    resume: wasPlaying => { if (wasPlaying) setPlaying(true); },
+  });
   reducedMotion.addEventListener('change', () => {
     if (reducedMotion.matches) { frameMotion = false; if (selectedFrame >= 0) currentTime = SCENE_TOUR_FRAMES[selectedFrame]!.time; setPlaying(false); if (travelBlur) travelBlur.amount.value = 0; }
   });
@@ -1007,7 +1018,7 @@ const init = async (): Promise<void> => {
     else setPlaying(!playing);
   });
   window.addEventListener('keydown', (event) => {
-    if (landingMode) return;
+    if (landingMode || document.body.classList.contains('quincy-menu-open')) return;
     const editing = event.target instanceof HTMLElement && event.target.closest('input, textarea, select, [contenteditable]');
     if (!inspectionPreset && !editing && (event.code === 'KeyH' || event.key.toLowerCase() === 'h')) {
       event.preventDefault();
@@ -1210,6 +1221,7 @@ const init = async (): Promise<void> => {
     const shownTime = pacing ? pacing.filmAt(currentTime) : currentTime;
     timeline.value = shownTime.toFixed(3);
     timeOutput.value = formatTime(shownTime, displayDuration);
+    if (tourMode) timeline.style.setProperty('--q-progress', `${(shownTime / displayDuration * 100).toFixed(1)}%`);
 
     uiIdleTimer += delta;
     navigation?.update(viewMode, currentTime, selectedFrame, frameTransition.active, frameMotion);

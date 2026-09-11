@@ -1,3 +1,5 @@
+import { chapterInk } from './quincyGlyphs';
+
 export type SceneViewMode = 'cinema' | 'frames';
 type Frame = { readonly time: number; readonly name: string };
 
@@ -20,7 +22,8 @@ export const createSceneNavigation = (
   const buttons = frames.map((frame, index) => {
     const button = document.createElement('button');
     button.type = 'button'; button.dataset.frame = String(index);
-    button.textContent = frame.name;
+    button.setAttribute('aria-label', `${index + 1}. ${frame.name}`); button.title = frame.name;
+    button.innerHTML = chapterInk(index);
     button.addEventListener('click', () => actions.frame(index));
     strip.append(button); return button;
   });
@@ -32,16 +35,18 @@ export const createSceneNavigation = (
   let prior = '';
   return {
     update(mode: SceneViewMode, time: number, selected: number, moving: boolean, live: boolean): void {
-      const active = selected >= 0 ? selected : frames.findIndex(frame => Math.abs(frame.time - time) < .05);
+      const active = selected >= 0 ? selected : mode === 'cinema'
+        ? frames.findLastIndex(frame => frame.time <= time + .05)
+        : frames.findIndex(frame => Math.abs(frame.time - time) < .05);
       const key = `${mode}:${active}:${moving}:${live}`;
       if (key === prior) return; prior = key;
       document.body.dataset.view = mode;
       cinema.setAttribute('aria-pressed', String(mode === 'cinema'));
       stills.setAttribute('aria-pressed', String(mode === 'frames'));
-      filmControls.hidden = mode !== 'cinema'; frameControls.hidden = mode !== 'frames';
-      label.value = active >= 0 ? `${String(active + 1).padStart(2, '0')} / ${frames.length} · ${frames[active]!.name}` : 'Текущий момент';
+      filmControls.hidden = mode !== 'cinema'; frameControls.hidden = false;
+      label.value = active >= 0 ? frames[active]!.name : 'Текущий момент';
       status.textContent = mode === 'cinema' ? 'НЕПРЕРЫВНЫЙ ПРОЛЁТ' : moving ? 'ПЕРЕЛЁТ' : live ? 'ЖИВОЙ КАДР' : 'ДВИЖЕНИЕ НА ПАУЗЕ';
-      motion.hidden = mode !== 'frames'; motion.textContent = live ? 'Ⅱ' : '▶';
+      motion.hidden = mode !== 'frames';
       motion.setAttribute('aria-pressed', String(live));
       motion.setAttribute('aria-label', live ? 'Остановить движение в кадре' : 'Оживить кадр');
       motion.title = motion.getAttribute('aria-label')!;

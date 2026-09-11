@@ -1,0 +1,129 @@
+/* Desktop controller: transparent face, circular chapters, a directional pad.
+ * Native hit areas remain intact; only the ink casts a small legibility shadow. */
+.q-sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+.q-ink { display:block; width:40px; height:40px; flex-shrink:0; pointer-events:none; }
+.q-reverse { transform:scaleX(-1); }
+body.quincy-interface { --q-ink:#f4f2ed; --q-muted:#cacbc6; --q-shadow:0 1px 3px #000,0 0 12px #000c; }
+body.quincy-interface #controls {
+  position:fixed; inset:0; width:100%; max-width:none; height:100%; margin:0; padding:0;
+  border:0; border-radius:0; background:none; box-shadow:none; backdrop-filter:none;
+  color:var(--q-ink); font-family:Georgia,'Times New Roman',serif; pointer-events:none;
+  text-shadow:var(--q-shadow);
+}
+body.quincy-interface #viewer-modes, body.quincy-interface .view-switch,
+body.quincy-interface .frame-life, body.quincy-interface #frame-controls,
+body.quincy-interface .frame-heading, body.quincy-interface #film-controls {
+  display:contents; border:0; background:none; padding:0; margin:0;
+}
+body.quincy-interface #controls button, body.quincy-interface #restore-controls {
+  position:absolute; display:flex; align-items:center; justify-content:center;
+  min-width:0; min-height:0; width:64px; height:64px; padding:0; border:1px solid #d9dcd39c;
+  border-radius:50%; color:var(--q-muted); background:none; box-shadow:0 1px 7px #0003,inset 0 0 8px #0002;
+  font-family:inherit; cursor:pointer; pointer-events:auto; backdrop-filter:none; text-shadow:var(--q-shadow);
+  transition:color .16s,border-color .16s,box-shadow .16s;
+}
+body.quincy-interface #controls button > .q-ink, body.quincy-interface #restore-controls > .q-ink { filter:drop-shadow(0 1px 3px #000); }
+body.quincy-interface #controls button:hover, body.quincy-interface #controls button:focus-visible,
+body.quincy-interface #controls button[aria-pressed=true] {
+  color:var(--q-ink); background:none; border-color:#f8f8ed;
+  box-shadow:0 0 0 4px #e2e3d71a,0 1px 8px #0005,inset 0 0 9px #0002;
+}
+body.quincy-interface #controls button:focus-visible, body.quincy-interface #restore-controls:focus-visible, #quincy-dialog button:focus-visible { outline:1px solid #fffef1; outline-offset:6px; }
+body.quincy-interface #controls button:disabled { opacity:.24; cursor:default; }
+.q-button-label { position:absolute; top:calc(100% + 9px); left:50%; transform:translateX(-50%); white-space:nowrap; font-size:11px; letter-spacing:.10em; color:inherit; }
+body.quincy-interface #controls .view-switch button { width:76px; height:76px; min-height:0; min-width:0; padding:0; }
+body.quincy-interface #mode-cinema { right:246px; bottom:64px; }
+body.quincy-interface #mode-frames { right:145px; bottom:91px; }
+body.quincy-interface #controls #quincy-menu { right:44px; bottom:118px; width:76px; height:76px; }
+#quincy-menu > .q-ink { width:43px; height:49px; }
+body.quincy-interface #controls #play, body.quincy-interface #controls #frame-motion { right:258px; bottom:180px; min-height:0; min-width:0; width:60px; height:60px; padding:0; }
+body.quincy-interface #controls #flight-sound { right:157px; bottom:207px; width:60px; height:60px; }
+body.quincy-interface #controls #hide-panel { right:56px; bottom:234px; min-height:0; min-width:0; width:60px; height:60px; padding:0; }
+#frame-motion .q-ink, #hide-panel .q-ink, #flight-sound .q-ink, #play .q-ink { width:35px; height:38px; }
+body.quincy-interface #viewer-status { position:absolute; left:50%; bottom:26px; transform:translateX(-50%); color:#b8bcb7; font-family:Georgia,serif; font-size:9px; letter-spacing:.19em; max-width:none; text-align:center; }
+body.quincy-interface #frame-strip {
+  position:absolute; top:30px; left:50%; transform:translateX(-50%); display:flex; gap:20px;
+  padding:0; overflow:visible; width:max-content; pointer-events:auto;
+}
+body.quincy-interface #controls [data-frame] {
+  position:relative; flex:0 0 70px; width:70px; height:70px; min-width:0; min-height:0;
+  padding:0; border:1px solid #d9dcd39c; border-radius:50%; background:none; color:#d4d6cf;
+}
+[data-frame] .q-chapter-number { width:32px; height:45px; }
+body.quincy-interface #controls [data-frame][aria-pressed=true] { color:#fffef3; border-color:#fffff1; background:none; box-shadow:0 0 0 4px #dadbcd24,0 0 0 6px #dadbcd50,0 2px 9px #0004; }
+body.quincy-interface #controls [data-frame][aria-pressed=true]::after { content:''; position:absolute; bottom:-15px; left:calc(50% - 2px); width:4px; height:4px; background:currentColor; transform:rotate(45deg); box-shadow:var(--q-shadow); }
+body.quincy-interface #frame-label { position:absolute; top:127px; left:50%; transform:translateX(-50%); color:#e9eae3; font-family:Georgia,serif; font-size:15px; letter-spacing:.10em; white-space:nowrap; }
+#quincy-pad { position:absolute; left:46px; bottom:54px; width:180px; height:180px; color:#d9dcd3a8; }
+.q-pad-outline { width:180px; height:180px; filter:drop-shadow(0 1px 3px #000); pointer-events:none; }
+.q-pad-center { position:absolute; inset:66px; display:grid; place-items:center; color:#e1e3db; }
+.q-pad-center .q-ink { width:25px; height:30px; filter:drop-shadow(0 1px 3px #000); }
+.q-pad-caption { position:absolute; top:calc(100% + 14px); width:100%; text-align:center; font-size:11px; letter-spacing:.15em; color:#d2d5cd; }
+.q-pad-caption small { font-size:11px; margin-left:10px; letter-spacing:.08em; opacity:.65; }
+body.quincy-interface #controls #frame-previous, body.quincy-interface #controls #frame-next,
+body.quincy-interface #controls #frame-first, body.quincy-interface #controls #frame-last {
+  width:54px; height:54px; border:0; border-radius:0; background:none; box-shadow:none;
+}
+body.quincy-interface #frame-previous { left:46px; bottom:117px; }
+body.quincy-interface #frame-next { left:172px; bottom:117px; }
+body.quincy-interface #frame-first { left:63px; top:0; }
+body.quincy-interface #frame-last { left:63px; bottom:0; }
+#frame-first .q-ink { transform:rotate(90deg); }
+#frame-last .q-ink { transform:rotate(-90deg); }
+#quincy-pad button .q-ink, #frame-previous .q-ink, #frame-next .q-ink { width:38px; height:38px; }
+body.quincy-interface #timeline { position:absolute; left:50%; bottom:65px; transform:translateX(-50%); width:min(29vw,460px); height:44px; margin:0; padding:0; border:0; border-radius:0; background:none; appearance:none; -webkit-appearance:none; cursor:pointer; pointer-events:auto; filter:drop-shadow(0 1px 3px #000); }
+body.quincy-interface #timeline::-webkit-slider-runnable-track { height:2px; background:linear-gradient(90deg,#eeeee3 var(--q-progress,0%),#a0a59bb0 var(--q-progress,0%)); }
+body.quincy-interface #timeline::-webkit-slider-thumb { appearance:none; -webkit-appearance:none; width:16px; height:27px; margin-top:-12px; border:0; border-radius:0; background:#f5f4e9; clip-path:polygon(50% 0,65% 32%,100% 50%,65% 66%,50% 100%,35% 66%,0 50%,35% 32%); }
+body.quincy-interface #timeline::-moz-range-track { height:2px; background:#a0a59bb0; }
+body.quincy-interface #timeline::-moz-range-progress { height:2px; background:#eeeee3; }
+body.quincy-interface #timeline::-moz-range-thumb { width:16px; height:27px; border:0; border-radius:0; background:#f5f4e9; clip-path:polygon(50% 0,65% 32%,100% 50%,65% 66%,50% 100%,35% 66%,0 50%,35% 32%); }
+body.quincy-interface #timeline:focus-visible { outline:1px solid #e4e5dc; outline-offset:4px; }
+body.quincy-interface #time { position:absolute; left:50%; bottom:50px; transform:translateX(-50%); color:#e0e2d8; font:13px Georgia,serif; letter-spacing:.17em; }
+body.quincy-interface #restore-controls { position:fixed; right:42px; bottom:35px; width:56px; height:56px; color:#e3e5dc; opacity:.8; background:none; }
+body.quincy-interface #restore-controls[hidden] { display:none; }
+body.quincy-interface .q-pause, body.quincy-interface [data-playing=true] .q-play, #frame-motion[aria-pressed=true] .q-play { display:none; }
+body.quincy-interface [data-playing=true] .q-pause, #frame-motion[aria-pressed=true] .q-pause { display:block; }
+[aria-pressed=true] > .q-ink .q-mute { display:none; }
+#quincy-dialog { position:fixed; inset:0; width:100%; height:100%; max-width:none; max-height:none; margin:0; padding:24px; border:0; color:#f0f0e7; background:#02050752; text-shadow:0 2px 4px #000,0 0 15px #000; font-family:Georgia,'Times New Roman',serif; overflow:auto; }
+#quincy-dialog[open] { display:grid; place-items:center; }
+#quincy-dialog::backdrop { background:#05070942; }
+#quincy-dialog button { border:0; border-radius:0; color:#dedfd5; background:none; font-family:inherit; font-size:17px; text-shadow:inherit; cursor:pointer; }
+#quincy-dialog button:hover, #quincy-dialog button:focus-visible { color:#fffef5; }
+#quincy-dialog .q-dialog-close { position:absolute; top:30px; right:38px; width:56px; height:56px; display:grid; place-items:center; border:1px solid #ddd9; border-radius:50%; }
+.q-menu-content { width:min(100%,520px); text-align:center; padding:30px 0; }
+.q-eyebrow { margin:4px 0 16px; font-size:12px; letter-spacing:.5em; padding-left:.5em; color:#d3d6cb; }
+#quincy-title { margin:0 auto; width:375px; line-height:1; }
+#quincy-title .q-wordmark { width:100%; height:auto; filter:drop-shadow(0 2px 4px #000); }
+.q-menu-subtitle { margin:16px 0 36px; font:9px Arial,sans-serif; letter-spacing:.24em; color:#d2d6ca; }
+.q-menu-choices { display:flex; flex-direction:column; align-items:center; gap:8px; }
+#quincy-dialog .q-menu-choices button { position:relative; min-height:54px; min-width:320px; display:flex; justify-content:center; align-items:center; gap:18px; font-size:27px; letter-spacing:.055em; }
+.q-menu-pointer { width:29px; height:29px; opacity:0; transition:opacity .16s; }
+.q-menu-choices button:hover .q-menu-pointer, .q-menu-choices button:focus .q-menu-pointer { opacity:1; }
+.q-menu-settings { width:340px; margin:30px auto 0; padding-top:14px; border-top:1px solid #b1b1a844; }
+#quincy-dialog .q-menu-settings button { display:flex; align-items:center; gap:12px; width:100%; min-height:48px; font-size:14px; text-align:left; letter-spacing:.045em; }
+.q-menu-settings .q-ink { width:29px; height:33px; }
+.q-setting-value { margin-left:auto; min-width:35px; text-align:right; font-size:12px; color:#b8bdb0; }
+[aria-pressed=true] .q-setting-value { color:#eff2e4; }
+#quincy-dialog button:disabled { opacity:.4; cursor:default; }
+.q-menu-footer p { margin:30px 0 0; color:#b1b8aa; font:11px Georgia,serif; letter-spacing:.03em; }
+.q-menu-footer kbd { display:inline-block; font:11px Georgia,serif; color:#e1e5d8; margin-right:5px; }
+.q-menu-footer i { margin:0 8px; font-style:normal; }
+#scene-entry.q-entry { display:grid; grid-template-columns:1fr 1fr; width:350px; gap:0; padding:18px 12px; bottom:40px; right:40px; background:none; color:#f1f1e7; text-shadow:0 2px 5px #000; }
+.q-entry-title { grid-column:1/-1; text-align:center; margin-bottom:20px; }
+.q-entry-title > span { display:block; font:11px Georgia,serif; letter-spacing:.45em; margin:0 0 12px; }
+.q-entry-title .q-wordmark { width:280px; height:auto; margin:auto; filter:drop-shadow(0 2px 4px #000); }
+#scene-entry.q-entry a { display:flex; align-items:center; justify-content:center; gap:7px; min-height:48px; padding:0 4px; border:0; border-radius:0; background:none; color:#d5d9cd; backdrop-filter:none; font:14px Georgia,serif; }
+#scene-entry.q-entry a .q-ink { width:27px; height:33px; }
+#scene-entry.q-entry a:hover, #scene-entry.q-entry a:focus-visible { color:#fffef4; }
+#scene-entry.q-entry a:focus-visible { outline:1px solid #deded5; outline-offset:3px; }
+@media(max-height:740px) {
+  .q-menu-content { padding:8px 0; }
+  #quincy-title { width:280px; }
+  .q-eyebrow { margin:4px 0 8px; font-size:9px; }
+  .q-menu-subtitle { margin:10px 0 15px; }
+  #quincy-dialog .q-menu-choices button { min-height:46px; font-size:23px; }
+  .q-menu-settings { margin-top:16px; padding-top:8px; }
+  .q-menu-footer p { margin-top:16px; }
+}
+@media(prefers-reduced-motion:reduce) { body.quincy-interface #controls *, #quincy-dialog * { transition:none !important; } }
+
+body.quincy-interface #controls #inspect-mode, body.quincy-interface #controls #hud { display:none; }
