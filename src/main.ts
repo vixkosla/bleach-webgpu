@@ -24,6 +24,7 @@ import './style.css';
 import { CinematicDirector } from './cinematic/CinematicDirector';
 import { SceneTourDirector, SCENE_TOUR_DURATION, SCENE_TOUR_FRAMES } from './cinematic/SceneTourDirector';
 import { FrameTransition } from './cinematic/FrameTransition';
+import { FrameFlight } from './cinematic/FrameFlight';
 import { ScenePacing } from './cinematic/ScenePacing';
 import { FlightWhoosh } from './cinematic/FlightWhoosh';
 import { createFrameTravelBlur } from './materials/frameTravelBlur';
@@ -278,6 +279,7 @@ const init = async (): Promise<void> => {
     alpha: false,
   });
   const deviceStatus = watchDeviceLoss(renderer, reason => {
+    whoosh?.update(0, false, false);
     document.body.dataset.ready = 'false';
     document.body.dataset.gpu = reason;
     loading.hidden = true;
@@ -594,6 +596,8 @@ const init = async (): Promise<void> => {
   if (travelBlur) inspectionRenderPipeline.outputNode = travelBlur.output;
   const travelPreviewCamera = camera.clone();
   const travelPreview = tour && upperEvent ? new SceneTourDirector(travelPreviewCamera, upperEvent.layout) : null;
+  const frameFlight = tour && upperEvent ? new FrameFlight(city, upperEvent.layout) : null;
+  frameFlight?.warm(camera.aspect);
   const travelAim = new THREE.Vector3();
   const travelFocus = new THREE.Vector2(.5, .5);
   const previousViewPoint = new THREE.Vector3();
@@ -650,7 +654,7 @@ const init = async (): Promise<void> => {
       orbitControls,
       tour,
       storyAtmosphere,
-      frameTransition, travelBlur, pacing, whoosh,
+      frameTransition, frameFlight, travelBlur, pacing, whoosh,
       viewer: { get mode() { return viewMode; }, get selectedFrame() { return selectedFrame; }, get live() { return frameMotion; }, get lifeTime() { return frameLifeTime; } },
       wordmark,
       upperEvent,
@@ -745,7 +749,14 @@ const init = async (): Promise<void> => {
 
   const setPlaying = (value: boolean): void => {
     frameTransition.cancel();
-    if (value && tourMode) { viewMode = 'cinema'; selectedFrame = -1; }
+    if (value && tourMode) {
+      if (viewMode === 'frames' && currentTime < filmDuration && frameFlight && travelPreview && tour) {
+        travelPreviewCamera.aspect = camera.aspect; travelPreview.update(currentTime);
+        frameFlight.start(camera, tour.target, travelPreviewCamera, travelPreview.target);
+        frameTransition.start(currentTime, currentTime, reducedMotion.matches, 0, 0, frameFlight.length);
+      }
+      viewMode = 'cinema'; selectedFrame = -1;
+    }
     if (value && tourMode && currentTime >= filmDuration) currentTime = 0;
     playing = value;
     playButton.textContent = playing ? 'Ⅱ' : '▶';
@@ -888,7 +899,10 @@ const init = async (): Promise<void> => {
     const incomingSmear = frameTransition.amount;
     const incomingPush = frameTransition.push;
     setPlaying(false); viewMode = 'frames'; selectedFrame = SCENE_TOUR_FRAMES.indexOf(frame);
-    frameTransition.start(currentTime, frame.time, reducedMotion.matches, incomingSmear, incomingPush);
+    travelPreviewCamera.aspect = camera.aspect;
+    travelPreview!.updateFrame(frame.time);
+    frameFlight!.start(camera, tour.target, travelPreviewCamera, travelPreview!.target);
+    frameTransition.start(currentTime, frame.time, reducedMotion.matches, incomingSmear, incomingPush, frameFlight!.length);
     if (!frameTransition.active) currentTime = frameTransition.time;
     if (!document.body.classList.contains('hud-hidden')) setHud(true);
     url.searchParams.set('view', 'frames'); url.searchParams.set('t', String(frame.time));
@@ -907,8 +921,7 @@ const init = async (): Promise<void> => {
   const navigation = tour ? createSceneNavigation(SCENE_TOUR_FRAMES, {
     mode: mode => {
       if (inspectionPreset) return;
-      viewMode = mode; selectedFrame = -1;
-      setPlaying(mode === 'cinema'); setHud(true);
+      setPlaying(mode === 'cinema'); viewMode = mode; selectedFrame = -1; setHud(true);
       url.searchParams.delete('t'); url.searchParams.delete('ft');
       if (mode === 'frames') { url.searchParams.set('view', 'frames'); url.searchParams.set('paused', ''); }
       else { url.searchParams.delete('view'); url.searchParams.delete('paused'); }
@@ -922,7 +935,7 @@ const init = async (): Promise<void> => {
     },
   }) : null;
   reducedMotion.addEventListener('change', () => {
-    if (reducedMotion.matches) { frameMotion = false; setPlaying(false); if (travelBlur) travelBlur.amount.value = 0; }
+    if (reducedMotion.matches) { frameMotion = false; if (selectedFrame >= 0) currentTime = SCENE_TOUR_FRAMES[selectedFrame]!.time; setPlaying(false); if (travelBlur) travelBlur.amount.value = 0; }
   });
   hudButton.addEventListener('click', () => setHud(false));
   inspectButton.addEventListener('click', () => activateInspectionPreset('street'));
@@ -1046,6 +1059,7 @@ const init = async (): Promise<void> => {
     camera.updateProjectionMatrix();
     renderer.setPixelRatio(getRenderPixelRatio());
     renderer.setSize(window.innerWidth, window.innerHeight);
+    if (frameTransition.active && viewMode === 'frames' && selectedFrame >= 0) chooseFrame(selectedFrame);
   };
   window.addEventListener('resize', resize);
 
@@ -1084,7 +1098,7 @@ const init = async (): Promise<void> => {
     if (!firstFrame && frameTransition.active && !inspectionPreset && document.visibilityState === 'visible') {
       currentTime = frameTransition.update(delta);
     }
-    if (!firstFrame && playing && !inspectionPreset && (!tourMode || document.visibilityState === 'visible')) {
+    if (!firstFrame && playing && !frameTransition.active && !inspectionPreset && (!tourMode || document.visibilityState === 'visible')) {
       currentTime = pacing ? pacing.storyAt(pacing.filmAt(currentTime) + delta) : currentTime + delta;
       if (currentTime >= filmDuration) {
         if (tourMode) { currentTime = filmDuration; setPlaying(false); if (!document.body.classList.contains('hud-hidden')) setHud(true); }
@@ -1101,7 +1115,12 @@ const init = async (): Promise<void> => {
       inspectionNavigation.update(delta);
     } else if (tour) {
       previousViewPoint.set(0, 0, -400).applyMatrix4(camera.matrixWorld);
-      tour.update(currentTime);
+      if (frameTransition.active && frameFlight) {
+        tour.state.update(currentTime);
+        frameFlight.sample(frameTransition.progress, camera);
+        tour.target.copy(frameFlight.target);
+      } else if (viewMode === 'frames') tour.updateFrame(currentTime);
+      else tour.update(currentTime);
       if (travelBlur) {
         const amount = reducedMotion.matches ? 0 : Math.max(frameTransition.amount,
           viewMode === 'cinema' && playing ? Math.max(tour.motionSmear, .11 * (pacing?.rushAt(currentTime) ?? 0)) : 0);
@@ -1110,8 +1129,9 @@ const init = async (): Promise<void> => {
           const follow = 1 - Math.exp(-delta * 8);
           if (travelPreview) {
             travelPreviewCamera.aspect = camera.aspect;
-            travelPreview.update(frameTransition.active ? frameTransition.lookAheadTime : Math.min(filmDuration, currentTime + .25));
-            travelAim.copy(travelPreviewCamera.position).sub(camera.position).transformDirection(camera.matrixWorldInverse);
+            if (frameTransition.active && frameFlight) travelAim.copy(frameFlight.lookAhead);
+            else { travelPreview.update(Math.min(filmDuration, currentTime + .25)); travelAim.copy(travelPreviewCamera.position); }
+            travelAim.sub(camera.position).transformDirection(camera.matrixWorldInverse);
             // A bounded vanishing point leads the turn, including reverse travel.
             // Positive depth avoids a projected point flipping behind the lens.
             const depth = Math.max(.4, -travelAim.z);
@@ -1125,7 +1145,7 @@ const init = async (): Promise<void> => {
           smearDirection.set(previousViewPoint.x * shutter, -previousViewPoint.y * shutter).clampScalar(-.12, .12);
           travelBlur.direction.value.lerp(smearDirection, follow);
           // Off-axis lens push into the next direction; never widen the lens.
-          // World-space position stays on the collision-checked flight.
+          // World-space position follows the selected clear spatial corridor.
           const zoom = 1 + frameTransition.push * .46, crop = 1 - 1 / zoom;
           camera.setViewOffset(camera.aspect, 1, travelBlur.focus.value.x * camera.aspect * crop,
             travelBlur.focus.value.y * crop, camera.aspect / zoom, 1 / zoom);

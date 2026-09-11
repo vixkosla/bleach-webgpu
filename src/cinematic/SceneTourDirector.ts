@@ -15,9 +15,7 @@ export const SCENE_TOUR_FRAMES = [
   { time: 7, name: 'В улице' },
   { time: 16.5, name: 'Пробуждение Гетсуги' },
   { time: 22, name: 'Вдоль стен' },
-  { time: 30, name: 'Кромка луны' },
   { time: 38, name: 'Над бурей' },
-  { time: 48, name: 'Гетсуга' },
   { time: 54, name: 'Цитадель и луна' },
   { time: 66, name: 'Парящий город' },
 ] as const;
@@ -97,6 +95,15 @@ export class SceneTourDirector {
       63,62,65,69,66,73,79,82,76,69,66,72,75,74,72,76,79,80,80,78,76], 1);
     this.rollTrack = track(times, [0,-1.5,-.6,0,-1,-3,-4,7,3,0,-1,-2,1,
       -7,-11,-8,-3,4,9,11,7,-4,-9,-5,4,9,5,0,-3,-1,0,1,2,0], 1);
+  }
+
+  /** Held compositions can breathe independently of the continuous Cinema track. */
+  updateFrame(time: number): void {
+    this.update(time);
+    if (Math.abs(time - 22) < .001) {
+      this.camera.position.sub(this.target).multiplyScalar(1.16).add(this.target);
+      this.camera.updateMatrixWorld(true);
+    }
   }
 
   update(input: number): void {

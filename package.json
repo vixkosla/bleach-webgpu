@@ -16,7 +16,7 @@
     "check": "pnpm typecheck && pnpm audit:citadel && pnpm audit:facade && pnpm audit:atmosphere && pnpm audit:tour && pnpm audit:island && pnpm audit:transitions",
     "audit:tour": "node --experimental-transform-types --no-warnings --loader ./scripts/resolve-ts.mjs scripts/audit-scene-tour.mjs",
     "audit:island": "node --experimental-transform-types --no-warnings --loader ./scripts/resolve-ts.mjs scripts/audit-floating-city.mjs",
-    "audit:transitions": "node --experimental-transform-types --no-warnings --loader ./scripts/resolve-ts.mjs scripts/audit-frame-transition.mjs"
+    "audit:transitions": "node --experimental-transform-types --no-warnings --loader ./scripts/resolve-ts.mjs scripts/audit-frame-transition.mjs && node --experimental-transform-types --no-warnings --loader ./scripts/resolve-ts.mjs scripts/audit-frame-flight.mjs"
   },
   "dependencies": {
     "@typegpu/three": "0.12.1",

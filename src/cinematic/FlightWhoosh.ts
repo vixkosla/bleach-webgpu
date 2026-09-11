@@ -43,6 +43,7 @@ export class FlightWhoosh {
       this.button.setAttribute('aria-pressed', String(this.enabled));
       this.button.setAttribute('aria-label', this.enabled ? 'Выключить свист пролёта' : 'Включить свист пролёта');
     } catch {
+      void this.context?.close().catch(() => {}); this.context = null;
       this.enabled = false; this.button.disabled = true;
       this.button.title = 'Звук недоступен в этом браузере';
     }

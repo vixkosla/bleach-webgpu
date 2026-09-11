@@ -1,7 +1,7 @@
 import { smootherstep } from '../utils/math';
 
-/** Compress story time along the authored flight, keeping every intermediate
- * camera and weather state. Re-targeting begins at the currently shown time. */
+/** Transition clock and shutter envelope. Story time drives weather only;
+ * FrameFlight owns the independent spatial camera corridor. */
 export class FrameTransition {
   active = false;
   time = 0;
@@ -22,12 +22,14 @@ export class FrameTransition {
     return this.time + Math.sign(remaining) * Math.min(Math.abs(remaining), lead);
   }
 
-  start(from: number, to: number, reducedMotion = false, initialAmount = 0, initialPush = initialAmount): void {
+  start(from: number, to: number, reducedMotion = false, initialAmount = 0, initialPush = initialAmount, travelDistance?: number): void {
     this.launchAmount = Math.max(0, Math.min(1, initialAmount));
     this.launchPush = Math.max(0, Math.min(1, initialPush));
     this.from = this.time = from; this.to = to; this.elapsed = 0;
-    this.duration = reducedMotion ? 0 : 2 + Math.min(1.2, Math.abs(to - from) * .075);
-    this.active = Math.abs(to - from) > .001 && !reducedMotion;
+    this.duration = reducedMotion ? 0 : travelDistance === undefined
+      ? 2 + Math.min(1.2, Math.abs(to - from) * .075)
+      : 1.65 + Math.min(1.35, travelDistance / 1100);
+    this.active = (Math.abs(to - from) > .001 || (travelDistance ?? 0) > .01) && !reducedMotion;
     this.progress = this.active ? 0 : 1; this.amount = this.active ? this.launchAmount : 0;
     this.push = this.active ? this.launchPush : 0;
     if (!this.active) this.time = to;
