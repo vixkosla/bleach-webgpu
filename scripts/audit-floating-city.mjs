@@ -12,6 +12,14 @@ const key=v=>v.toArray().map(n=>n.toFixed(3)).join(',');
 const cross=new T.Vector3(),a=new T.Vector3(),b=new T.Vector3(),c=new T.Vector3();
 for(const mesh of island.children){const g=mesh.geometry,ps=g.attributes.position,idx=g.index;for(let i=0;i<(idx?.count??ps.count);i+=3){const vs=[a,b,c];for(let j=0;j<3;j++)vs[j].fromBufferAttribute(ps,idx?idx.getX(i+j):i+j);assert(vs.every(v=>v.toArray().every(Number.isFinite)));assert(cross.crossVectors(b.clone().sub(a),c.clone().sub(a)).length()>1e-5,'Degenerate face');volume+=a.dot(cross.crossVectors(b,c))/6;triangles++;for(let j=0;j<3;j++){const edge=[key(vs[j]),key(vs[(j+1)%3])].sort().join('|');edges.set(edge,(edges.get(edge)??0)+1)}}}
 assert([...edges.values()].every(n=>n===2),'Paving/rock must form a closed connected shell');assert(volume>0,'Outward winding');
+assert(rock.geometry.attributes.position.count / 3 < 70000, 'Rock geometry budget');
+const normals=rock.geometry.attributes.normal;
+for(let i=0;i<normals.count;i++){a.fromBufferAttribute(normals,i);assert(a.toArray().every(Number.isFinite));assert(Math.abs(a.length()-1)<1e-5,'Unit surface normals');}
+const repeated=createFloatingIsland(new T.MeshBasicMaterial());
+for(let i=0;i<island.children.length;i++)for(const name of ['position','normal','color']){
+ const a=island.children[i].geometry.attributes[name],b=repeated.children[i].geometry.attributes[name];if(a)assert.deepEqual(a.array,b.array,'Deterministic '+name);
+}
+
 const lots=createCityOutskirts();assert.equal(lots.length,1152);assert.deepEqual(lots,createCityOutskirts());
 for(const lot of lots)for(const dx of [-lot.width*.11,lot.width*.11])for(const dz of [-lot.depth*.11,lot.depth*.11])assert(islandContains(lot.x+dx,lot.z+dz),lot.name+' off island');
 for(const t of OUTSKIRT_TOWERS)assert(islandContains(t.x,t.z,.025));
