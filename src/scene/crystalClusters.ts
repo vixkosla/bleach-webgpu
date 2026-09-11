@@ -6,6 +6,9 @@ export type CrystalQuality = 'high' | 'medium' | 'low';
 const qualities: CrystalQuality[] = ['high', 'medium', 'low'];
 const noise = (s: number) => THREE.MathUtils.euclideanModulo(Math.sin(s * 127.1 + 311.7) * 43758.5453, 1);
 const palette = [0xb367cf, 0x9b51c5, 0xc584d5, 0x8542b2, 0xae60c8].map(c => new THREE.Color(c));
+// Same canyon as Frames 7 / middle-transverse. City crystals elsewhere stay sparse.
+const onFilmedStreet = (p: THREE.Vector3) =>
+  p.x > -300 && p.x < 80 && Math.abs(p.z - 385) < 58;
 
 /** Closed mineral shafts: broad faces, unequal terminal facets, bevels up close.
  * All levels retain the same length and width so a distant crown keeps its shape. */
@@ -110,34 +113,39 @@ export class CrystalClusterBuilder {
     const { origin, u, v, normal, seed, scale, veins } = surface;
     if (scale < 2) return;
     const citadel = this.options.kind === 'citadel';
+    const street = !citadel && onFilmedStreet(origin);
     const point = (p: THREE.Vector2) => origin.clone().addScaledVector(u, p.x).addScaledVector(v, p.y);
 
     // The connected relief supplies the roots. Several squat intergrown
     // crystals occupy each strong ridge, rather than one long pencil per vein.
+    // The filmed street uses more, smaller shafts so they read as clusters, not plates.
     for (let i = 0; i < veins.length; i++) {
       const vein = veins[i]!;
-      if (!citadel && i % 4 !== 0) continue;
+      if (!citadel && !street && i % 4 !== 0) continue;
+      if (street && i % 2 !== 0) continue;
       const delta = vein.to.clone().sub(vein.from), available = delta.length();
-      if (available < 1.2) continue;
+      if (available < (street ? 0.7 : 1.2)) continue;
       const s = seed + i * 97;
       const direction = delta.clone().normalize();
       const tangent = u.clone().multiplyScalar(direction.x).addScaledVector(v, direction.y).normalize();
       const sideways = normal.clone().cross(tangent).normalize();
-      const members = citadel ? 4 : 2;
+      const members = citadel ? 4 : street ? 5 : 2;
       for (let member = 0; member < members; member++) {
         const n = s + member * 43;
-        const station = .10 + member / members * .67 + noise(n + 3) * .12;
+        const station = (street ? .04 : .10) + member / members * (street ? .78 : .67) + noise(n + 3) * .12;
         const root2 = vein.from.clone().lerp(vein.to, station);
-        const width = Math.min(citadel ? 2.4 : 1.25,
-          Math.max(citadel ? .65 : .35, vein.startWidth * (.6 + noise(n + 5) * .6)));
+        const width = Math.min(citadel ? 2.4 : street ? 0.62 : 1.25,
+          Math.max(citadel ? .65 : street ? .18 : .35, vein.startWidth * (.5 + noise(n + 5) * .45)));
         const depth = width * (.68 + noise(n + 11) * .62);
-        const length = Math.min(available * (1 - station) * .85,
-          width * (1.4 + noise(n + 7) * 2.4));
-        if (length < width * .8) continue;
+        const length = Math.min(available * (1 - station) * (street ? .55 : .85),
+          width * (street ? 1.15 + noise(n + 7) * 1.15 : 1.4 + noise(n + 7) * 2.4));
+        if (length < width * (street ? .55 : .8)) continue;
         const root = point(root2).addScaledVector(normal, depth * .36 + .035);
         const growth = tangent.clone().addScaledVector(normal, .18 + noise(n + 17) * .38)
-          .addScaledVector(sideways, (noise(n + 19) - .5) * .8).normalize();
-        const detail = member === 0 && i % 3 === 0 ? 0 : member === 0 ? 1 : 2;
+          .addScaledVector(sideways, (noise(n + 19) - .5) * (street ? .45 : .8)).normalize();
+        const detail = street
+          ? member < 2 ? 0 : member < 4 ? 1 : 2
+          : member === 0 && i % 3 === 0 ? 0 : member === 0 ? 1 : 2;
         this.add(root, growth, normal, width, length, depth, n, detail);
       }
     }

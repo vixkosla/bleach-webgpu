@@ -406,6 +406,22 @@ const init = async (): Promise<void> => {
   scene.add(streetFill);
   scene.add(streetFill.target);
 
+  // Frames 7 looks east along the middle-transverse. The moon key sits above
+  // the canyon, so those side walls go black. Short local spots rake the
+  // filmed facades without lifting the rest of the city or the citadel.
+  const streetCanyonZ = 385 + TOWER_Z;
+  const rakeStreet = (x: number, side: 1 | -1, intensity: number) => {
+    const light = new THREE.SpotLight(0xc9c4d8, intensity, 210, Math.PI * 0.34, 0.58, 1.55);
+    light.position.set(x, CITY_DECK_Y + 36, streetCanyonZ + side * 48);
+    light.target.position.set(x, CITY_DECK_Y + 16, streetCanyonZ);
+    light.name = `filmed-street-rake-${x}-${side}`;
+    scene.add(light);
+    scene.add(light.target);
+  };
+  rakeStreet(-210, 1, 165);
+  rakeStreet(-110, -1, 140);
+  rakeStreet(-20, 1, 120);
+
   // Front fill from the citadel side: the moon key and street fill both sit
   // behind the camera, so the facades the camera actually faces stay in full
   // shadow. This counter-fill lifts those front-facing walls out of black

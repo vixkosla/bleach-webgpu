@@ -255,6 +255,7 @@ export class CrystalCoatingBuilder {
     const perimeter = edges.reduce((sum, edge) => sum + edge.length, 0);
     const scale = Math.min(hullArea * 4 / perimeter, domain?.maxScale ?? colony?.maxScale ?? Infinity);
     const citadel = this.kind === 'citadel';
+    const streetCanyon = !citadel && origin.x > -300 && origin.x < 80 && Math.abs(origin.z - 385) < 58;
     const roof = normal.y > 0.3;
     const pattern: FrostPattern = citadel ? 'citadel-dendrites'
       : (['corner-lace', 'wind-rime', 'broken-front'] as const)[Math.floor(random(seed + 97) * 3)]!;
@@ -360,11 +361,12 @@ export class CrystalCoatingBuilder {
       const { along, down } = eaveAxes;
       const lean = (theta: number): THREE.Vector2 =>
         along.clone().multiplyScalar(Math.cos(theta)).addScaledVector(down, Math.sin(theta)).normalize();
-      const rimLength = Math.min(reach(nucleus, along) * 0.96, scale * 2.2)
+      const rimLength = Math.min(reach(nucleus, along) * (streetCanyon ? 0.52 : 0.96),
+        scale * (streetCanyon ? 1.05 : 2.2))
         * (0.8 + random(seed + 101) * 0.2) * grown;
-      deposit(nucleus, nucleus.clone().addScaledVector(along, rimLength), scale * 0.07, scale * 0.07, 0);
+      deposit(nucleus, nucleus.clone().addScaledVector(along, rimLength), scale * (streetCanyon ? 0.045 : 0.07), scale * (streetCanyon ? 0.045 : 0.07), 0);
       // Icicles: narrow, tapering, denser and longer near the corner.
-      const drips = 7 + Math.floor(random(seed + 211) * 5);
+      const drips = (streetCanyon ? 11 : 7) + Math.floor(random(seed + 211) * (streetCanyon ? 6 : 5));
       const dripWidth = rimLength / (drips + 0.3) * 0.42;
       for (let i = 0; i < drips; i += 1) {
         const s = seed + 613 + i * 67;
@@ -444,7 +446,7 @@ export class CrystalCoatingBuilder {
         width: vein.startWidth, group: vein.group })),
     });
     this.onGrowthSurface?.({ origin, u, v, normal, polygon, seed, scale, veins: ranges });
-    const maxRelief = Math.min(scale * 0.033, citadel ? 1.1 : 0.52);
+    const maxRelief = Math.min(scale * 0.033, citadel ? 1.1 : streetCanyon ? 0.16 : 0.52);
     const profileWidth = (vein: typeof ranges[number], t: number): number =>
       THREE.MathUtils.lerp(vein.startWidth, vein.endWidth, t) * .72
         * (.8 + .2 * Math.cos(t * 17 + vein.phase * 9))
@@ -485,7 +487,7 @@ export class CrystalCoatingBuilder {
     const field = (p: THREE.Vector2): number => sampleField(p).height;
     const sites: THREE.Vector2[] = [];
     const keys = new Set<string>();
-    const maxSites = citadel ? 620 : roof ? 300 : 260;
+    const maxSites = citadel ? 620 : streetCanyon ? 380 : roof ? 300 : 260;
     const addSite = (p: THREE.Vector2): void => {
       if (sites.length >= maxSites) return;
       p = clip(p.clone());

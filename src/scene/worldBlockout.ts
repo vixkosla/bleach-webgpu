@@ -1335,6 +1335,16 @@ const addDetailInstances = (
 // stone surround has visible depth; the dark insert must never form a box.
 const WINDOW_SURFACE_DEPTH = 0.024;
 const WINDOW_FRAME_DEPTH = 0.18;
+// Frames 7 travels the middle-transverse. Only that canyon is pulled forward.
+const FILMED_STREET_Z = 385;
+const isFilmedStreetPoint = (x: number, z: number) =>
+  x > -300 && x < 80 && Math.abs(z - FILMED_STREET_Z) < 58;
+const facesFilmedStreet = (
+  volume: CityTierVolume,
+  face: { axis: CityFacadeAxis; sign: -1 | 1 },
+) => isFilmedStreetPoint(volume.x, volume.z)
+  && face.axis === 'z'
+  && (volume.z >= FILMED_STREET_Z ? face.sign === -1 : face.sign === 1);
 
 const createLancetWindowGeometry = (frame = false): THREE.ExtrudeGeometry => {
   const shape = new THREE.Shape();
@@ -1524,6 +1534,26 @@ const pushFacadeElement = (
   });
 };
 
+const pushStreetWindowReveal = (
+  transforms: CityDetailTransform[],
+  volume: CityTierVolume,
+  axis: CityFacadeAxis,
+  sign: -1 | 1,
+  along: number,
+  y: number,
+  windowWidth: number,
+  windowHeight: number,
+): void => {
+  const trim = THREE.MathUtils.clamp(windowWidth * 0.22, 0.22, 0.36);
+  const reveal = 0.52;
+  const spanX = windowWidth + trim * 2;
+  const spanY = windowHeight + trim * 2;
+  pushFacadeElement(transforms, volume, axis, sign, along - (windowWidth + trim) * 0.5, y, trim, spanY, reveal);
+  pushFacadeElement(transforms, volume, axis, sign, along + (windowWidth + trim) * 0.5, y, trim, spanY, reveal);
+  pushFacadeElement(transforms, volume, axis, sign, along, y + (windowHeight + trim) * 0.5, spanX, trim, reveal);
+  pushFacadeElement(transforms, volume, axis, sign, along, y - (windowHeight + trim) * 0.5, spanX, trim, reveal);
+};
+
 const pushWrapBand = (
   transforms: CityDetailTransform[],
   volume: CityTierVolume,
@@ -1569,6 +1599,7 @@ const addCityFacadeLayer = (
   const stainedWindows: CityDetailTransform[] = [];
   const facadeBands: CityDetailTransform[] = [];
   const lancetFrames: CityDetailTransform[] = [];
+  const streetWindowReveals: CityDetailTransform[] = [];
   const basePlinths: CityDetailTransform[] = [];
   const buttressLower: CityDetailTransform[] = [];
   const buttressMiddle: CityDetailTransform[] = [];
@@ -1781,7 +1812,8 @@ const addCityFacadeLayer = (
           volume.tierCount - 1,
           Math.floor((tierRhythmSeed / 0.38) * volume.tierCount),
         );
-        const isBlankTier = hasBlankTier && volume.tierIndex === blankTierIndex;
+        const isBlankTier = hasBlankTier && volume.tierIndex === blankTierIndex
+          && !isFilmedStreetPoint(volume.x, volume.z);
 
         // Some buildings have only two openings in total. Their height and
         // tier vary, but secondary faces and merged wings remain solid stone.
@@ -1814,17 +1846,25 @@ const addCityFacadeLayer = (
                 openingHeight,
                 WINDOW_SURFACE_DEPTH,
               );
+              if (facesFilmedStreet(volume, face)) {
+                pushStreetWindowReveal(
+                  streetWindowReveals, volume, face.axis, face.sign,
+                  side * openingSpread, openingY, openingWidth, openingHeight,
+                );
+              }
             }
           }
         }
 
-        const isSparseTier = style === 'sparse' && volume.tierIndex > 0;
+        const isSparseTier = style === 'sparse' && volume.tierIndex > 0
+          && !isFilmedStreetPoint(volume.x, volume.z);
         if (style !== 'minimal' && !isSparseTier && !isBlankTier) {
           for (let faceIndex = 0; faceIndex < faces.length; faceIndex += 1) {
             const face = faces[faceIndex];
             if (!face) continue;
             const isPrimaryFace = faceIndex === primaryFaceIndex;
-            if (style === 'sparse' && !isPrimaryFace) continue;
+            const streetFace = facesFilmedStreet(volume, face);
+            if (style === 'sparse' && !isPrimaryFace && !streetFace) continue;
             const alongLength = face.axis === 'z' ? volume.width : volume.depth;
             if (alongLength < 5.2 || volume.height < 3.8) continue;
             const rowSlotCount = style === 'sparse'
@@ -1931,8 +1971,8 @@ const addCityFacadeLayer = (
             );
             const rowGap = volume.height / (rowSlotCount + 1);
             const windowHeight = Math.min(
-              rowGap * 0.78,
-              Math.max(1.7, windowWidth * windowProfile.heightAspect),
+              rowGap * (streetFace ? 0.88 : 0.78),
+              Math.max(streetFace ? 2.05 : 1.7, windowWidth * windowProfile.heightAspect),
             );
             const rowLift = (verticalAccentSeed - 0.5) * rowGap * 0.38;
             for (let rowIndex = 0; rowIndex < rowSlotCount; rowIndex += 1) {
@@ -1961,6 +2001,12 @@ const addCityFacadeLayer = (
                   windowHeight,
                   WINDOW_SURFACE_DEPTH,
                 );
+                if (streetFace) {
+                  pushStreetWindowReveal(
+                    streetWindowReveals, volume, face.axis, face.sign,
+                    along, y, windowWidth, windowHeight,
+                  );
+                }
               }
             }
 
@@ -2069,6 +2115,7 @@ const addCityFacadeLayer = (
   );
   addDetailInstances(parent, 'blockout-facade-course-bands', boxGeometry, reliefMaterial, facadeBands);
   addDetailInstances(parent, 'blockout-facade-lancet-frames', boxGeometry, reliefMaterial, lancetFrames);
+  addDetailInstances(parent, 'blockout-street-window-reveals', boxGeometry, reliefMaterial, streetWindowReveals);
   addDetailInstances(parent, 'blockout-building-base-plinths', boxGeometry, reliefMaterial, basePlinths);
   addDetailInstances(parent, 'blockout-buttress-lower-steps', boxGeometry, reliefMaterial, buttressLower);
   addDetailInstances(parent, 'blockout-buttress-middle-steps', boxGeometry, reliefMaterial, buttressMiddle);
@@ -3051,10 +3098,12 @@ const addCityGrowthLayer = (
     const sin = Math.sin(rotationY);
     const colonyWave = Math.sin(spec.x * 0.018 + spec.z * 0.011 + 0.7) * 0.6
       + Math.sin(spec.x * 0.009 - spec.z * 0.021 + 1.9) * 0.4;
-    const strength = 0.88 + colonyWave * 0.18;
+    const filmedStreet = isFilmedStreetPoint(spec.x, spec.z);
+    const strength = filmedStreet ? 1 : 0.88 + colonyWave * 0.18;
     // The cold settles in drifts: roughly a quarter of the masses, in smooth
     // spatial patches, carry frost on their roofs only and keep clean walls.
-    const wallsFrozen = colonyWave > -0.38;
+    // The filmed canyon always keeps wall growth so street crystals have roots.
+    const wallsFrozen = filmedStreet || colonyWave > -0.38;
     const baseWidth = spec.width * CITY_BUILDING_PLAN_SCALE;
     const baseDepth = spec.depth * CITY_BUILDING_PLAN_SCALE;
     const shiftX = spec.upperShiftX * CITY_BUILDING_PLAN_SCALE;
