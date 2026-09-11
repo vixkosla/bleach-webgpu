@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import * as T from 'three/webgpu';
 import {SceneTourDirector, SCENE_TOUR_DURATION, SCENE_STORY_CUTS} from '../src/cinematic/SceneTourDirector.ts';
 import {SCENE_STORY_INTRO} from '../src/cinematic/SceneStoryState.ts';
+import {createUpperInspectionPreset} from '../src/cinematic/upperInspection.ts';
+import {ScenePacing} from '../src/cinematic/ScenePacing.ts';
 import {createUpperLayout} from '../src/scene/upperEvent.ts';
 import {CITADEL_WORLD_SCALE,createCitadelPrisms,CITADEL_UPPER_ANCHOR} from '../src/scene/citadelGeometry.ts';
 import {prismContains} from '../src/scene/citadelPrisms.ts';
@@ -29,9 +31,9 @@ for(const aspect of [1.5,390/844]){
    const top=crown.clone().add(new T.Vector3(0,6,0)).project(camera);
    assert(Math.abs(top.x)<.95&&Math.abs(top.y)<.95,`Citadel crown clipped at ${time}: ${top.toArray()}`);
   }
-  // The coast dive intentionally transfers attention to the rock at48–62s.
-  // White-sky and full-island beats must retain the complete lunar silhouette.
-  if(storyTime>=33 && (time<=48 || time>=62)){
+  // The right-side citadel approach regains the complete moon at52s;
+  // keep that silhouette through the saved main shot and island reveal.
+  if(storyTime>=33 && (time<=48 || time>=52)){
    for(let ring=0;ring<3;ring++)for(let j=0;j<32;j++){
     const angle=j/32*Math.PI*2,point=layout.center.clone();
     if(ring===0)point.add(new T.Vector3(Math.cos(angle)*layout.radius,Math.sin(angle)*layout.radius,0));
@@ -48,6 +50,10 @@ for(const aspect of [1.5,390/844]){
   previous={p:camera.position.clone(),q:camera.quaternion.clone()};
  }
  assert(minMoon>230);assert(maxSpeed<350, `Continuous camera speed ${maxSpeed}`);assert(maxTurn<185, `Turn too abrupt: ${maxTurn}`);
+ const home=createUpperInspectionPreset(layout,aspect);d.update(54);
+ assert(camera.position.distanceTo(new T.Vector3(...home.position))<.0001,'Frame54 must use the saved main-page camera');
+ assert(d.target.distanceTo(new T.Vector3(...home.target))<.0001,'Frame54 must retain the saved right-side aim');
+ assert(Math.abs(camera.fov-home.fov)<.001,'Frame54 must retain the saved lens');
  for(const time of [62,64,66]){
   d.update(time);
   for(const prism of masonry)for(const v of prism.plan)for(const y of [prism.bottom,prism.top]){
@@ -59,4 +65,14 @@ for(const aspect of [1.5,390/844]){
  for(const t of [0,5,7,8.8,11.2,18.5,19.8,23,27,32]){d.update(t);const expected=camera.matrixWorld.clone(), state={...d.state};d.update(17.13);d.update(t);assert.deepEqual(camera.matrixWorld.elements,expected.elements,'Seeking must reproduce the same camera');assert.deepEqual({...d.state},state,'Reverse seek must restore sky/light/advection')}
  report.push({aspect,minMoon,maxSpeed,maxTurn,endSpeed});
 }
-console.log(JSON.stringify({passed:true,cityBoxes:boxes.length,samples:(SCENE_TOUR_DURATION*20+1)*2,report},null,2));
+const pacing=new ScenePacing();let last=-1,minRate=Infinity,maxRate=0;
+for(let i=0;i<=3600;i++){
+ const film=i/100,story=pacing.storyAt(film),rate=pacing.rateAt(film);
+ assert(story>last&&story>=0&&story<=66,'Cinema pacing must advance without cuts or reversals');last=story;
+ assert(Math.abs(pacing.filmAt(story)-film)<.00001,'Scrubbing must invert the Cinema clock');
+ assert(rate>1&&rate<4.5);minRate=Math.min(minRate,rate);maxRate=Math.max(maxRate,rate);
+}
+assert.equal(pacing.storyAt(29),54,'Saved right-side frame lands at29film seconds');
+assert.equal(pacing.storyAt(36),66);assert.equal(pacing.duration,36);
+assert(pacing.rateAt(21)>pacing.rateAt(24.5)*2.5,'Repeated moon angles should rush into the slower hero view');
+console.log(JSON.stringify({passed:true,cityBoxes:boxes.length,samples:(SCENE_TOUR_DURATION*20+1)*2,report,pacing:{duration:pacing.duration,minRate,maxRate}},null,2));

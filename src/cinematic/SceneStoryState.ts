@@ -13,7 +13,7 @@ export const SCENE_STORY_BEATS = [
   { time: 30, name: 'У бока луны' },
   { time: 38, name: 'Луна в белом небе' },
   { time: 48, name: 'Раскрытие слоёв' },
-  { time: 54, name: 'Скала под городом' },
+  { time: 54, name: 'Цитадель и луна справа' },
   { time: 62, name: 'Цитадель и Гетсуга' },
   { time: 66, name: 'Парящий город' },
 ] as const;

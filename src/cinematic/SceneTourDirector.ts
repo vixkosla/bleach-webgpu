@@ -2,7 +2,8 @@ import * as THREE from 'three/webgpu';
 import type { UpperEventLayout } from '../scene/upperEvent';
 import { CITY_DECK_Y, TOWER_Z } from '../scene/constants';
 import { CitadelOverview } from './CitadelOverview';
-import { pulse, smootherstep } from '../utils/math';
+import { createUpperInspectionPreset } from './upperInspection';
+import { pulse, smoothstep, smootherstep } from '../utils/math';
 import { SceneStoryState, SCENE_STORY_DURATION, SCENE_STORY_BEATS, SCENE_STORY_INTRO } from './SceneStoryState';
 
 export const SCENE_TOUR_DURATION = SCENE_STORY_DURATION;
@@ -17,7 +18,7 @@ export const SCENE_TOUR_FRAMES = [
   { time: 30, name: 'Кромка луны' },
   { time: 38, name: 'Над бурей' },
   { time: 48, name: 'Гетсуга' },
-  { time: 54, name: 'Скала под городом' },
+  { time: 54, name: 'Цитадель и луна' },
   { time: 66, name: 'Парящий город' },
 ] as const;
 // Kept for existing review consumers. There are no edits or camera cuts.
@@ -29,7 +30,7 @@ const track = (times: Float32Array, values: number[], size: number) =>
  * east through the cross street, then turn left back toward the citadel into
  * the processional avenue. Climb the keep's eastern buttresses and rear terraces,
  * cross the lunar flank, crest through white sky, then dive outside the city's
- * coast to show its suspended rock before the rising full-scale reveal.
+ * right side to regain the saved citadel-and-moon view before the island reveal.
  * Position, subject aim, bank and lens are sampled together with no cuts. */
 export class SceneTourDirector {
   readonly duration = SCENE_TOUR_DURATION;
@@ -47,9 +48,13 @@ export class SceneTourDirector {
   private readonly moonCenter: THREE.Vector3;
   private readonly moonRadius: number;
   private readonly overview: CitadelOverview;
+  private readonly homeReference;
+  private homeView;
+  private homeAspect = 1;
 
-  constructor(private readonly camera: THREE.PerspectiveCamera, layout: UpperEventLayout) {
+  constructor(private readonly camera: THREE.PerspectiveCamera, private readonly layout: UpperEventLayout) {
     this.overview = new CitadelOverview(layout);
+    const home = this.homeReference = this.homeView = createUpperInspectionPreset(layout, 1);
     this.moonCenter = layout.center.clone(); this.moonRadius = layout.radius;
     const y = CITY_DECK_Y, z = TOWER_Z, c = layout.crown.y, m = layout.center.y;
     const times = new Float32Array([-4,-2.5,-1.3,0,2,4,5.2,5.65,6.2,7.5,8.8,10.2,12.5,14,16,18,20,22,24,26,28,30,32,34,36,39,42,44,46,48,50,52,55,58]);
@@ -69,9 +74,10 @@ export class SceneTourDirector {
       -340,m-25,z-90, -320,m+145,z+135, -230,m+300,z+335,
       -30,m+420,z+410, 155,m+440,z+435, 265,m+290,z+470,
       245,m+65,z+580, 155,c-10,z+655, 100,c-150,z+710,
-      // Descend outside the city rim and expose the fractured stone under it.
-      -130,y+190,z+960, -510,y+65,z+990, -865,y-30,z+790,
-      -1140,y+45,z+900, -1170,y+220,z+1230, -850,y+370,z+1750,
+      // Return along the right facade to the original main-page composition,
+      // then draw back to reveal the island. The saved pose lands at54s.
+      130,c-185,z+610, 128,c-226,z+480, ...home.position,
+      110,c-240,z+490, 80,c-255,z+820, 0,c-280,z+1200,
     ], 3);
     this.targetTrack = track(times, [
       -7,c*.60,z, 0,y+110,z, 0,y+90,z,
@@ -84,13 +90,13 @@ export class SceneTourDirector {
       -7,m-115,z, -7,m-65,z, -7,m-40,z,
       -7,m,z, -7,m+6,z, -7,m+25,z,
       -7,m+35,z, -7,c+180,z, -7,c+120,z,
-      -70,c-40,z+80, -135,y+40,z+230, -220,y-95,z+340,
-      -140,y+70,z+110, -30,c-240,z+30, -7,y,z,
+      -7,c+30,z, -7,c-10,z, ...home.target,
+      -7,c-40,z, -7,c-140,z, -7,y+100,z,
     ], 3);
     this.lensTrack = track(times, [68,70,70,70,70,76,78,78,76,74,72,74,68,
-      63,62,65,69,66,73,79,82,76,69,66,72,75,74,72,76,79,78,73,66,58], 1);
+      63,62,65,69,66,73,79,82,76,69,66,72,75,74,72,76,79,80,80,78,76], 1);
     this.rollTrack = track(times, [0,-1.5,-.6,0,-1,-3,-4,7,3,0,-1,-2,1,
-      -7,-11,-8,-3,4,9,11,7,-4,-9,-5,4,9,5,0,-8,-12,-7,4,7,0], 1);
+      -7,-11,-8,-3,4,9,11,7,-4,-9,-5,4,9,5,0,-3,-1,0,1,2,0], 1);
   }
 
   update(input: number): void {
@@ -124,10 +130,21 @@ export class SceneTourDirector {
       this.displacement.multiplyScalar(1 + Math.max(0, required / this.displacement.length() - 1) * reveal);
     }
     this.camera.position.copy(this.target).add(this.displacement);
-    if (storyTime > 54.5) {
+    // Preserve the exact saved right-side pose, including its narrower
+    // portrait lens. Cache the aspect adaptation instead of allocating per frame.
+    if (aspect !== this.homeAspect) {
+      this.homeAspect = aspect;
+      this.homeView = createUpperInspectionPreset(this.layout, aspect);
+    }
+    const homeWeight = smootherstep(48, 54, storyTime) * (1 - smootherstep(54, 62, storyTime));
+    this.camera.position.x += (this.homeView.position[0] - this.homeReference.position[0]) * homeWeight;
+    this.camera.position.z += (this.homeView.position[2] - this.homeReference.position[2]) * homeWeight;
+    this.target.y += (this.homeView.target[1] - this.homeReference.target[1]) * homeWeight;
+    fov += (this.homeView.fov - fov) * homeWeight;
+    if (storyTime > 54) {
       const orbit = smootherstep(55.5, 66, storyTime) * .62;
       this.overview.sample(orbit * (aspect < .8 ? .55 : 1), aspect, Math.sin(Math.PI * orbit / .62) ** 2 * .05);
-      const revealAll = smootherstep(54.5, 62, storyTime);
+      const revealAll = aspect < .8 ? smoothstep(54, 63, storyTime) : smootherstep(54.5, 62, storyTime);
       this.camera.position.lerp(this.overview.position, revealAll);
       this.target.lerp(this.overview.target, revealAll);
       fov += (this.overview.fov - fov) * revealAll;

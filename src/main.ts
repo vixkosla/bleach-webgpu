@@ -24,6 +24,8 @@ import './style.css';
 import { CinematicDirector } from './cinematic/CinematicDirector';
 import { SceneTourDirector, SCENE_TOUR_DURATION, SCENE_TOUR_FRAMES } from './cinematic/SceneTourDirector';
 import { FrameTransition } from './cinematic/FrameTransition';
+import { ScenePacing } from './cinematic/ScenePacing';
+import { FlightWhoosh } from './cinematic/FlightWhoosh';
 import { createFrameTravelBlur } from './materials/frameTravelBlur';
 import { createSceneNavigation, type SceneViewMode } from './ui/sceneNavigation';
 import { SceneAtmosphereDirector } from './cinematic/SceneAtmosphereDirector';
@@ -224,7 +226,10 @@ const init = async (): Promise<void> => {
   const url = new URL(window.location.href);
   const tourMode = url.searchParams.get('film') === 'tour';
   const filmDuration = tourMode ? SCENE_TOUR_DURATION : FILM_DURATION;
-  timeline.max = String(filmDuration);
+  const pacing = tourMode ? new ScenePacing() : null;
+  const whoosh = tourMode ? new FlightWhoosh() : null;
+  const displayDuration = pacing?.duration ?? filmDuration;
+  timeline.max = String(displayDuration);
   if (tourMode) {
     intro.style.display = 'none'; captions.style.display = 'none';
     document.body.dataset.view = url.searchParams.get('view') === 'frames' ? 'frames' : 'cinema';
@@ -645,7 +650,7 @@ const init = async (): Promise<void> => {
       orbitControls,
       tour,
       storyAtmosphere,
-      frameTransition, travelBlur,
+      frameTransition, travelBlur, pacing, whoosh,
       viewer: { get mode() { return viewMode; }, get selectedFrame() { return selectedFrame; }, get live() { return frameMotion; }, get lifeTime() { return frameLifeTime; } },
       wordmark,
       upperEvent,
@@ -873,7 +878,7 @@ const init = async (): Promise<void> => {
     if (!inspectionPreset) setPlaying(!playing);
   });
   timeline.addEventListener('input', () => {
-    currentTime = Number(timeline.value);
+    currentTime = pacing ? pacing.storyAt(Number(timeline.value)) : Number(timeline.value);
     selectedFrame = -1;
     setPlaying(false);
   });
@@ -1080,7 +1085,7 @@ const init = async (): Promise<void> => {
       currentTime = frameTransition.update(delta);
     }
     if (!firstFrame && playing && !inspectionPreset && (!tourMode || document.visibilityState === 'visible')) {
-      currentTime += delta;
+      currentTime = pacing ? pacing.storyAt(pacing.filmAt(currentTime) + delta) : currentTime + delta;
       if (currentTime >= filmDuration) {
         if (tourMode) { currentTime = filmDuration; setPlaying(false); if (!document.body.classList.contains('hud-hidden')) setHud(true); }
         else currentTime %= filmDuration;
@@ -1099,7 +1104,7 @@ const init = async (): Promise<void> => {
       tour.update(currentTime);
       if (travelBlur) {
         const amount = reducedMotion.matches ? 0 : Math.max(frameTransition.amount,
-          viewMode === 'cinema' && playing ? tour.motionSmear : 0);
+          viewMode === 'cinema' && playing ? Math.max(tour.motionSmear, .11 * (pacing?.rushAt(currentTime) ?? 0)) : 0);
         travelBlur.amount.value = amount;
         if (amount > 0) {
           const follow = 1 - Math.exp(-delta * 8);
@@ -1131,6 +1136,8 @@ const init = async (): Promise<void> => {
     } else {
       director.update(currentTime);
     }
+    whoosh?.update(pacing?.rushAt(currentTime) ?? 0,
+      playing && !inspectionPreset && !reducedMotion.matches, viewMode === 'cinema' && !inspectionPreset);
     tower.update(currentTime);
     if (upperEvent) {
       // The sky has its own review time, independent of fixed city-camera
@@ -1180,8 +1187,9 @@ const init = async (): Promise<void> => {
     }
 
     if (!tourMode) titleDirector.update(currentTime);
-    timeline.value = currentTime.toFixed(3);
-    timeOutput.value = formatTime(currentTime, filmDuration);
+    const shownTime = pacing ? pacing.filmAt(currentTime) : currentTime;
+    timeline.value = shownTime.toFixed(3);
+    timeOutput.value = formatTime(shownTime, displayDuration);
 
     uiIdleTimer += delta;
     navigation?.update(viewMode, currentTime, selectedFrame, frameTransition.active, frameMotion);
