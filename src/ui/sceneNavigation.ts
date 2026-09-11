@@ -13,6 +13,8 @@ export const createSceneNavigation = (
   const frameControls = document.querySelector<HTMLElement>('#frame-controls')!;
   const strip = document.querySelector<HTMLElement>('#frame-strip')!;
   const filmControls = document.querySelector<HTMLElement>('#film-controls')!;
+  const play = document.querySelector<HTMLButtonElement>('#play')!;
+  stills.hidden = true;
   const label = document.querySelector<HTMLOutputElement>('#frame-label')!;
   const previous = document.querySelector<HTMLButtonElement>('#frame-previous')!;
   const next = document.querySelector<HTMLButtonElement>('#frame-next')!;
@@ -22,12 +24,14 @@ export const createSceneNavigation = (
   const buttons = frames.map((frame, index) => {
     const button = document.createElement('button');
     button.type = 'button'; button.dataset.frame = String(index);
-    button.setAttribute('aria-label', `${index + 1}. ${frame.name}`); button.title = frame.name;
+    button.setAttribute('aria-label', `${index + 1}. ${frame.name}`);
+    button.setAttribute('aria-keyshortcuts', String(index + 1));
+    button.title = `${frame.name} · ${index + 1}`;
     button.innerHTML = chapterInk(index);
     button.addEventListener('click', () => actions.frame(index));
     strip.append(button); return button;
   });
-  cinema.addEventListener('click', () => actions.mode('cinema'));
+  cinema.addEventListener('click', () => actions.mode(document.body.dataset.view === 'cinema' ? 'frames' : 'cinema'));
   stills.addEventListener('click', () => actions.mode('frames'));
   previous.addEventListener('click', () => actions.step(-1));
   next.addEventListener('click', () => actions.step(1));
@@ -42,8 +46,11 @@ export const createSceneNavigation = (
       if (key === prior) return; prior = key;
       document.body.dataset.view = mode;
       cinema.setAttribute('aria-pressed', String(mode === 'cinema'));
+      cinema.setAttribute('aria-label', mode === 'cinema' ? 'Кино: перейти к кадрам' : 'Кадры: смотреть кино');
+      cinema.title = mode === 'cinema' ? 'Перейти к кадрам' : 'Смотреть кино';
       stills.setAttribute('aria-pressed', String(mode === 'frames'));
-      filmControls.hidden = mode !== 'cinema'; frameControls.hidden = false;
+      filmControls.hidden = false; frameControls.hidden = false;
+      play.hidden = mode !== 'cinema';
       label.value = active >= 0 ? frames[active]!.name : 'Текущий момент';
       status.textContent = mode === 'cinema' ? 'НЕПРЕРЫВНЫЙ ПРОЛЁТ' : moving ? 'ПЕРЕЛЁТ' : live ? 'ЖИВОЙ КАДР' : 'ДВИЖЕНИЕ НА ПАУЗЕ';
       motion.hidden = mode !== 'frames';

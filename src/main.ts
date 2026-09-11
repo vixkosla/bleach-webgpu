@@ -27,7 +27,6 @@ import { SceneTourDirector, SCENE_TOUR_DURATION, SCENE_TOUR_FRAMES } from './cin
 import { FrameTransition } from './cinematic/FrameTransition';
 import { FrameFlight } from './cinematic/FrameFlight';
 import { ScenePacing } from './cinematic/ScenePacing';
-import { FlightWhoosh } from './cinematic/FlightWhoosh';
 import { createFrameTravelBlur } from './materials/frameTravelBlur';
 import { createSceneNavigation, type SceneViewMode } from './ui/sceneNavigation';
 import { SceneAtmosphereDirector } from './cinematic/SceneAtmosphereDirector';
@@ -229,7 +228,6 @@ const init = async (): Promise<void> => {
   const tourMode = url.searchParams.get('film') === 'tour';
   const filmDuration = tourMode ? SCENE_TOUR_DURATION : FILM_DURATION;
   const pacing = tourMode ? new ScenePacing() : null;
-  const whoosh = tourMode ? new FlightWhoosh() : null;
   const displayDuration = pacing?.duration ?? filmDuration;
   timeline.max = String(displayDuration);
   if (tourMode) {
@@ -281,7 +279,6 @@ const init = async (): Promise<void> => {
     alpha: false,
   });
   const deviceStatus = watchDeviceLoss(renderer, reason => {
-    whoosh?.update(0, false, false);
     document.body.dataset.ready = 'false';
     document.body.dataset.gpu = reason;
     loading.hidden = true;
@@ -656,7 +653,7 @@ const init = async (): Promise<void> => {
       orbitControls,
       tour,
       storyAtmosphere,
-      frameTransition, frameFlight, travelBlur, pacing, whoosh,
+      frameTransition, frameFlight, travelBlur, pacing,
       viewer: { get mode() { return viewMode; }, get selectedFrame() { return selectedFrame; }, get live() { return frameMotion; }, get lifeTime() { return frameLifeTime; } },
       wordmark,
       upperEvent,
@@ -895,6 +892,12 @@ const init = async (): Promise<void> => {
     currentTime = pacing ? pacing.storyAt(Number(timeline.value)) : Number(timeline.value);
     selectedFrame = -1;
     setPlaying(false);
+    if (tourMode) {
+      viewMode = 'cinema';
+      url.searchParams.delete('view'); url.searchParams.delete('ft');
+      url.searchParams.set('t', String(currentTime)); url.searchParams.set('paused', '');
+      window.history.replaceState(null, '', url);
+    }
   });
   const chooseFrame = (index: number): void => {
     if (!tour || inspectionPreset) return;
@@ -937,14 +940,7 @@ const init = async (): Promise<void> => {
       window.history.replaceState(null, '', url);
     },
   }) : null;
-  if (tourMode) createQuincyInterface({
-    pause: () => {
-      const prior = playing; playing = false;
-      playButton.dataset.playing = 'false'; playButton.setAttribute('aria-label', 'Play');
-      whoosh?.update(0, false, true); return prior;
-    },
-    resume: wasPlaying => { if (wasPlaying) setPlaying(true); },
-  });
+  if (tourMode) createQuincyInterface();
   reducedMotion.addEventListener('change', () => {
     if (reducedMotion.matches) { frameMotion = false; if (selectedFrame >= 0) currentTime = SCENE_TOUR_FRAMES[selectedFrame]!.time; setPlaying(false); if (travelBlur) travelBlur.amount.value = 0; }
   });
@@ -1018,7 +1014,17 @@ const init = async (): Promise<void> => {
     else setPlaying(!playing);
   });
   window.addEventListener('keydown', (event) => {
-    if (landingMode || document.body.classList.contains('quincy-menu-open')) return;
+    if (landingMode) return;
+    // Physical number keys also work on Russian layouts and the numeric keypad.
+    // Preserve browser shortcuts, text entry and a held key's repeat behavior.
+    const typing = event.target instanceof HTMLElement && event.target.closest('textarea, select, [contenteditable], input:not([type=range])');
+    const chapter = event.code.match(/^(?:Digit|Numpad)([1-7])$/) ?? event.key.match(/^([1-7])$/);
+    if (tourMode && !inspectionPreset && !typing && chapter
+      && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && !event.isComposing) {
+      event.preventDefault();
+      if (!event.repeat) chooseFrame(Number(chapter[1]) - 1);
+      return;
+    }
     const editing = event.target instanceof HTMLElement && event.target.closest('input, textarea, select, [contenteditable]');
     if (!inspectionPreset && !editing && (event.code === 'KeyH' || event.key.toLowerCase() === 'h')) {
       event.preventDefault();
@@ -1167,8 +1173,6 @@ const init = async (): Promise<void> => {
     } else {
       director.update(currentTime);
     }
-    whoosh?.update(pacing?.rushAt(currentTime) ?? 0,
-      playing && !inspectionPreset && !reducedMotion.matches, viewMode === 'cinema' && !inspectionPreset);
     tower.update(currentTime);
     if (upperEvent) {
       // The sky has its own review time, independent of fixed city-camera
