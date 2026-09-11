@@ -2,6 +2,7 @@ import type { UpperEventController, UpperAtmosphereCue } from '../scene/upperEve
 import type { createArchitectureGrade } from '../materials/architectureGrade';
 import type { createCityHaze } from '../materials/cityHaze';
 import type { SceneStoryState } from './SceneStoryState';
+import { smootherstep } from '../utils/math';
 
 type Scalar = { value: number };
 type Binding = { control: Scalar; initial: number; sample: (state: SceneStoryState) => number };
@@ -40,6 +41,11 @@ export class SceneAtmosphereDirector {
     scale(c.clearingLight, s => .5 + s.illumination * .5 + s.whiteSky * .55);
     scale(c.distantLight, s => .2 + s.precursor * .4 + s.illumination * 1.4);
     set(c.distantMist, s => s.precursor * .6 + s.weather * .4);
+    // Fixed world banks evolve smoothly through the known path. The high
+    // passage lifts their shoulders; the coast descent reveals lower depths.
+    set(c.skyDepth, s => s.weather * (.78 + .22 * smootherstep(44, 56, s.time)));
+    set(c.skyLift, s => 180 * smootherstep(24, 34, s.time) * (1 - smootherstep(44, 52, s.time)));
+    set(c.skyLower, s => .2 + .8 * smootherstep(46, 54, s.time));
     const cloudBase = c.cloudBase.value;
     set(c.cloudBase, s => cloudBase - 40 * s.pressure);
     scale(c.cloudRelief, s => 1 + s.pressure * .4);
@@ -55,9 +61,9 @@ export class SceneAtmosphereDirector {
     scale(v.rayClouds, s => .2 + s.illumination * .8);
     if (haze) {
       scale(haze.controls.glow, s => .7 + s.illumination * .6);
-      scale(haze.controls.density, s => 1.9 - Math.min(1, s.illumination) * .55);
-      set(haze.controls.opacityLimit, s => .48 - Math.min(1, s.illumination) * .15);
-      scale(haze.controls.height, s => 1.3 + s.pressure * .35);
+      scale(haze.controls.density, s => (1.9 - Math.min(1, s.illumination) * .55) * (1 - .24 * smootherstep(52, 62, s.time)));
+      set(haze.controls.opacityLimit, s => .48 - Math.min(1, s.illumination) * .15 - .09 * smootherstep(52, 62, s.time));
+      scale(haze.controls.height, s => 1.3 + s.pressure * .35 - .22 * smootherstep(52, 62, s.time));
       scale(haze.controls.strength, s => 1 + s.weather * .3);
     }
     this.layerOrigins = upper.clouds.layers.map(layer => ({

@@ -48,7 +48,7 @@ for(const aspect of [1.5,390/844]){
   previous={p:camera.position.clone(),q:camera.quaternion.clone()};
  }
  assert(minMoon>230);assert(maxSpeed<350, `Continuous camera speed ${maxSpeed}`);assert(maxTurn<185, `Turn too abrupt: ${maxTurn}`);
- for(const time of [62,69,76]){
+ for(const time of [62,64,66]){
   d.update(time);
   for(const prism of masonry)for(const v of prism.plan)for(const y of [prism.bottom,prism.top]){
    const point=new T.Vector3(v.x,y,v.y).multiply(scale).add(shift).project(camera);

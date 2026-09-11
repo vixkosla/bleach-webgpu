@@ -1,7 +1,7 @@
 import { pulse, smootherstep } from '../utils/math';
 
 export const SCENE_STORY_INTRO = 4;
-export const SCENE_STORY_DURATION = 72 + SCENE_STORY_INTRO;
+export const SCENE_STORY_DURATION = 62 + SCENE_STORY_INTRO;
 export const SCENE_STORY_BEATS = [
   { time: 0, name: 'Общий план города' },
   { time: 4, name: 'Проход по улице' },
@@ -15,7 +15,7 @@ export const SCENE_STORY_BEATS = [
   { time: 48, name: 'Раскрытие слоёв' },
   { time: 54, name: 'Скала под городом' },
   { time: 62, name: 'Цитадель и Гетсуга' },
-  { time: 76, name: 'Парящий город' },
+  { time: 66, name: 'Парящий город' },
 ] as const;
 
 /** Absolute time owns every cue, including advection. Seeking backwards

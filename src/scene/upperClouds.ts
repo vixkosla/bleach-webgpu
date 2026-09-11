@@ -6,6 +6,7 @@ import {
 import { createCloudNoiseTexture } from './cloudTexture';
 import { createUpperCloudVolume } from './upperCloudVolume';
 import { createUpperWeatherCeiling } from './upperWeatherCeiling';
+import { createUpperSkyDepth } from './upperSkyDepth';
 import { UPPER_ATMOSPHERE } from './upperAtmosphereLayout';
 import type { UpperAtmosphereCue, UpperEventLayout } from './upperEvent';
 
@@ -28,6 +29,7 @@ export const createUpperClouds = (
   const time = uniform(0), backgroundTime = uniform(0), exposure = uniform(0);
   const ceiling = createUpperWeatherCeiling(layout, noise, time);
   const volume = createUpperCloudVolume(layout, time, exposure, ceiling);
+  const skyDepth = createUpperSkyDepth(layout, noise, backgroundTime, exposure);
   const layers = SKY_LAYERS.map(() => ({
     offset: uniform(new THREE.Vector3()), density: uniform(1),
   }));
@@ -35,7 +37,7 @@ export const createUpperClouds = (
   const controls = { density: uniform(1.35), glow: uniform(0.85), cavity: volume.controls.cavity,
     clearing: uniform(1), clearingWidth: uniform(3.2), clearingLight: uniform(0.25),
     greyTransition: uniform(1.55), royalGlow: volume.controls.royalGlow,
-    royalRadius: volume.controls.royalRadius, canopy: uniform(1), ...ceiling.controls };
+    royalRadius: volume.controls.royalRadius, canopy: uniform(1), ...ceiling.controls, ...skyDepth.controls };
   const orientation = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 6);
   const lightPosition = layout.center.clone().add(new THREE.Vector3(0, 0, -layout.radius * 0.55).applyQuaternion(orientation));
   const light = vec3(...lightPosition.toArray());
@@ -160,8 +162,10 @@ export const createUpperClouds = (
   // the overlapping region too; the inspector's zero mist keeps its look.
   const farAir = distantField.y.mul(.34);
   const farColor = color(0xc8b8d1).mul(.10).add(color(0xffefd9).mul(distantOpenings).mul(.5));
-  backdropMaterial.colorNode = vec4(mix(weatherBackground, farColor, farAir)
-    .add(color(0xf0e0d3).mul(distantOpenings).mul(controls.distantMist).mul(weatherCoverage).mul(.14)), 1);
+  const oldSky = mix(weatherBackground, farColor, farAir)
+    .add(color(0xf0e0d3).mul(distantOpenings).mul(controls.distantMist).mul(weatherCoverage).mul(.14));
+  const depth = skyDepth.layer(direction);
+  backdropMaterial.colorNode = vec4(oldSky.mul(depth.a.oneMinus()).add(depth.rgb), 1);
   const backdrop = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), backdropMaterial);
   backdrop.name = 'upper-storm-background';
   backdrop.frustumCulled = false;

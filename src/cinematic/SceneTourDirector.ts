@@ -7,19 +7,18 @@ import { SceneStoryState, SCENE_STORY_DURATION, SCENE_STORY_BEATS, SCENE_STORY_I
 
 export const SCENE_TOUR_DURATION = SCENE_STORY_DURATION;
 export const SCENE_TOUR_BEATS = SCENE_STORY_BEATS;
+// Held Frames are distinct story moments. Transit poses (the second castle
+// approach, fog-covered terraces and the first overview) stay in the flight.
 export const SCENE_TOUR_FRAMES = [
   { time: 0, name: 'Ночной город' },
   { time: 7, name: 'В улице' },
-  { time: 12.8, name: 'Взгляд на замок' },
-  { time: 16.5, name: 'Цитадель снизу' },
-  { time: 22, name: 'Боковой фасад' },
-  { time: 26, name: 'Террасы' },
-  { time: 30, name: 'У бока луны' },
-  { time: 38, name: 'Белое небо' },
+  { time: 16.5, name: 'Пробуждение Гетсуги' },
+  { time: 22, name: 'Вдоль стен' },
+  { time: 30, name: 'Кромка луны' },
+  { time: 38, name: 'Над бурей' },
   { time: 48, name: 'Гетсуга' },
   { time: 54, name: 'Скала под городом' },
-  { time: 62, name: 'Цитадель и Гетсуга' },
-  { time: 76, name: 'Парящий город' },
+  { time: 66, name: 'Парящий город' },
 ] as const;
 // Kept for existing review consumers. There are no edits or camera cuts.
 export const SCENE_STORY_CUTS: readonly number[] = [];
@@ -126,15 +125,15 @@ export class SceneTourDirector {
     }
     this.camera.position.copy(this.target).add(this.displacement);
     if (storyTime > 54.5) {
-      const orbit = smootherstep(58, 76, storyTime);
-      this.overview.sample(orbit, aspect, Math.sin(Math.PI * orbit) ** 2 * .4);
+      const orbit = smootherstep(55.5, 66, storyTime) * .62;
+      this.overview.sample(orbit * (aspect < .8 ? .55 : 1), aspect, Math.sin(Math.PI * orbit / .62) ** 2 * .05);
       const revealAll = smootherstep(54.5, 62, storyTime);
       this.camera.position.lerp(this.overview.position, revealAll);
       this.target.lerp(this.overview.target, revealAll);
       fov += (this.overview.fov - fov) * revealAll;
     }
     this.camera.up.set(0, 1, 0); this.camera.lookAt(this.target);
-    this.camera.rotateZ(THREE.MathUtils.degToRad(this.rollTrack.evaluate(t)[0]! * (1 - smootherstep(58, 62, storyTime))));
+    this.camera.rotateZ(THREE.MathUtils.degToRad(this.rollTrack.evaluate(t)[0]! * (1 - smootherstep(56, 60, storyTime))));
     if (Math.abs(this.camera.fov - fov) > .001) {
       this.camera.fov = fov; this.camera.updateProjectionMatrix();
     }

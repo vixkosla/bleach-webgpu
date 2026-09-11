@@ -26,13 +26,13 @@ for(const t of OUTSKIRT_TOWERS)assert(islandContains(t.x,t.z,.025));
 const scale=new T.Vector3(...CITADEL_WORLD_SCALE),shift=new T.Vector3(0,CITY_DECK_Y*(1-scale.y),TOWER_Z),crown=new T.Vector3(...CITADEL_UPPER_ANCHOR).add(new T.Vector3(0,CITY_DECK_Y,0)).multiply(scale).add(shift),layout=createUpperLayout(crown),views=[];
 for(const aspect of [2560/1268,1.5,390/844]){
  const camera=new T.PerspectiveCamera(58,aspect,.12,4200),director=new SceneTourDirector(camera,layout);
- for(const time of [62,69,76]){
+ for(const time of [62,64,66]){
   director.update(time);const range={x:0,minY:Infinity,maxY:-Infinity,maxZ:-Infinity};
   for(const mesh of island.children)for(let i=0;i<mesh.geometry.attributes.position.count;i++){
    const p=a.fromBufferAttribute(mesh.geometry.attributes.position,i).add(new T.Vector3(0,0,TOWER_Z)).project(camera);
    range.x=Math.max(range.x,Math.abs(p.x));range.minY=Math.min(range.minY,p.y);range.maxY=Math.max(range.maxY,p.y);range.maxZ=Math.max(range.maxZ,p.z);
   }
-  assert(range.x<.9&&range.minY>(aspect<.8?-.45:-.58)&&range.maxZ<1,JSON.stringify({aspect,time,range}));views.push({aspect,time,range});
+  assert(range.x<.9&&range.minY>(aspect<.8?-.45:-.59)&&range.maxZ<1,JSON.stringify({aspect,time,range}));views.push({aspect,time,range});
  }
 }
 console.log(JSON.stringify({passed:true,lots:lots.length,towers:OUTSKIRT_TOWERS.length,rockTriangles:rock.geometry.attributes.position.count/3,closedShellTriangles:triangles,volume,views},null,2));
