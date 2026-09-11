@@ -68,10 +68,10 @@ export const clipCitadelCoating = (mesh: THREE.Mesh, prisms: readonly CitadelPri
 // keep. They are in citadel-local coordinates above the deck, shared by walls
 // and roofs. Clean bays between courses give the individual halls breathing room.
 export const CITADEL_GROWTH_COURSES = [
-  [[-30,207,-2],[-63,178,26],[-89,128,49],[-102,60,40],[-102,12,40]],
-  [[6,207,-38],[60,172,-59],[100,142,-52],[100,70,-50],[100,12,-50]],
-  [[-30,207,-38],[-30,170,-76],[-32,120,-91],[-40,46,-94],[-40,12,-94]],
-  [[6,207,-2],[24,166,33],[48,154,32],[100,100,31],[128,62,40],[128,20,40]],
+  [[-30,251,-2],[-63,210,26],[-89,128,49],[-102,60,40],[-102,12,40]],
+  [[6,251,-38],[60,198,-59],[100,142,-52],[100,70,-50],[100,12,-50]],
+  [[-30,251,-38],[-30,194,-76],[-32,120,-91],[-40,46,-94],[-40,12,-94]],
+  [[6,251,-2],[24,190,33],[48,154,32],[100,100,31],[128,62,40],[128,20,40]],
 ] as const;
 
 export const createCitadelCoatingOptions = (
@@ -95,12 +95,11 @@ export const createCitadelCoatingOptions = (
       }
     }
     const affinity = Math.exp(-Math.pow(distance/42,2));
-    // Frozen-city direction: fewer colonies on the citadel, each a larger
-    // sheet of ice, so the keep reads as a few big glacial slabs rather than
-    // many small patches.
+    // Connected mineral colonies travel over structural joints. Their footprint
+    // leaves blank masonry between dense groups of shorter fractured facets.
     if (affinity < 0.3) return null;
     const maturity = 0.5+0.5*Math.sin(p.x*0.041+p.y*0.029+p.z*0.037);
     return { score: affinity + p.y*0.00001,
-      maxScale: 20+affinity*(26+maturity*10), strength: 0.82+affinity*0.18 };
+      maxScale: 18+affinity*(18+maturity*8), strength: 0.82+affinity*0.18 };
   },
 });

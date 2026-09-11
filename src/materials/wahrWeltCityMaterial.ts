@@ -10,7 +10,10 @@ import {
   positionWorld as tslPositionWorld,
   sin as tslSin,
   smoothstep as tslSmoothstep,
+  texture as tslTexture,
+  vec2 as tslVec2,
 } from 'three/tsl';
+import { getStoneSurfaceTexture } from './stoneSurfaceTexture';
 import * as t3 from '@typegpu/three';
 import { d } from 'typegpu';
 import { abs, clamp, dot, floor, fract, mix, sin, smoothstep } from 'typegpu/std';
@@ -27,6 +30,8 @@ export interface WahrWeltStoneOptions {
   reliefDepth?: number;
   grainStrength?: number;
   ageStrength?: number;
+  surfaceScale?: number;
+  mineralStrength?: number;
 }
 
 export interface WahrWeltFloorOptions {
@@ -123,6 +128,7 @@ const createStoneReliefNormal = (
   seed: number,
   reliefDepth: number,
   grainStrength: number,
+  surfaceHeight: THREE.Node<'float'>,
 ) => {
   const stoneY = tslPositionWorld.y.sub(originY);
   const verticalFace = tslFloat(1).sub(
@@ -146,7 +152,7 @@ const createStoneReliefNormal = (
     .add(tslSin(alongFacade.mul(3.1).sub(stoneY.mul(2.2)).add(seed * 1.7)))
     .add(tslSin(alongFacade.add(stoneY).mul(5.3).sub(seed * 0.8)).mul(0.55))
     .mul(grainStrength);
-  const height = tslFloat(1).sub(mortar).mul(reliefDepth).add(grain).mul(verticalFace);
+  const height = tslFloat(1).sub(mortar).mul(reliefDepth).add(grain).mul(verticalFace).add(surfaceHeight);
 
   const dpdx = positionView.dFdx();
   const dpdy = positionView.dFdy();
@@ -199,9 +205,8 @@ const createGrowthReliefNormal = () => {
 };
 
 /**
- * Matte Wahr Welt masonry. Its only procedural components are staggered stone
- * courses, a restrained per-block value shift and a lighter upward albedo.
- * All value modelling comes from Three's real lights and shadow maps.
+ * Pale mineral stone with broken chalk washes, worn lavender patches and
+ * pores. Surface colour is distinct from the existing structural AO/shadows.
  */
 export const createWahrWeltStoneMaterial = (
   options: WahrWeltStoneOptions,
@@ -217,7 +222,19 @@ export const createWahrWeltStoneMaterial = (
   const reliefDepth = options.reliefDepth ?? 0.055;
   const grainStrength = options.grainStrength ?? 0.006;
   const ageStrength = options.ageStrength ?? 0.035;
+  const mineralStrength = options.mineralStrength ?? .48;
   const material = createBaseToonMaterial();
+
+  const topProjection = tslSmoothstep(.45, .85, normalWorldGeometry.y.abs());
+  const along = tslPositionWorld.x.mul(normalWorldGeometry.z).sub(tslPositionWorld.z.mul(normalWorldGeometry.x));
+  const facadeUv = tslVec2(along, tslPositionWorld.y.sub(originY));
+  const roofUv = tslVec2(tslPositionWorld.x, tslPositionWorld.z);
+  const surfaceUv = facadeUv.mul(tslFloat(1).sub(topProjection)).add(roofUv.mul(topProjection))
+    .div(options.surfaceScale ?? 84).add(tslVec2(seed * .137, seed * .271));
+  const surface = tslTexture(getStoneSurfaceTexture(), surfaceUv);
+  const detail = tslTexture(getStoneSurfaceTexture(), surfaceUv.mul(3.73).add(tslVec2(.37, .11)));
+  const masks = t3.fromTSL(surface, d.vec4f);
+  const micro = t3.fromTSL(detail, d.vec4f);
 
   material.colorNode = t3.toTSL(() => {
     'use gpu';
@@ -248,10 +265,20 @@ export const createWahrWeltStoneMaterial = (
       sin(dot(d.vec2f(column, course), d.vec2f(127.1, 311.7)) + seed * 19.19)
       * 43758.5453,
     );
-    const cellValue = 0.985 + cellHash * 0.03;
+    const cellValue = 0.96 + cellHash * 0.08;
 
     const topMask = smoothstep(0.58, 0.9, normal.y);
-    const stone = mix(base.$, top.$, topMask).mul(cellValue);
+    const wash = smoothstep(.25, .75, masks.$.x);
+    // Break the long deposits into small chips at a second, non-integral
+    // scale. A wide low-frequency threshold alone looks like camouflage.
+    const mineralField = masks.$.y * .6 + micro.$.y * .4;
+    const mineral = smoothstep(.53, .615, mineralField);
+    const worn = smoothstep(.49, .65, masks.$.w + (micro.$.w - .5) * .28);
+    const dryBrush = smoothstep(.49, .68, micro.$.w) * (.18 + mineral * .82);
+    const stone = mix(base.$, top.$, topMask).mul(cellValue * (.82 + wash * .25));
+    const mineralAmount = clamp(mineral * .5 + worn * mineral * .52 + dryBrush * .24, 0, 1) * mineralStrength;
+    const mineralStone = mix(stone, ageTint.$, mineralAmount);
+    const poreValue = 1 + (micro.$.z - .5) * .2;
 
     // A restrained ochre patina warms exposed and lower stones without
     // repainting whole facades. Reuse the cell hash already required by the
@@ -260,10 +287,11 @@ export const createWahrWeltStoneMaterial = (
     const exposedPatch = smoothstep(0.68, 0.96, cellHash) * verticalFace;
     const lowerAge = (1 - smoothstep(0, courseHeight * 5.5, stoneY)) * verticalFace;
     const age = clamp(exposedPatch * 0.52 + lowerAge * 0.72, 0, 1) * ageStrength;
-    const weatheredStone = mix(stone, ageTint.$, age).mul(1 - age * 0.18);
+    const weatheredStone = mix(mineralStone, ageTint.$, age).mul((1 - age * .18) * poreValue);
 
     // Joints must read as engraved seams, not as a black brick cage.
-    const structured = mix(weatheredStone, joint.$, mortar * 0.54);
+    const brokenJoint = .5 + smoothstep(.3, .65, masks.$.y) * .5;
+    const structured = mix(weatheredStone, joint.$, mortar * .38 * brokenJoint);
     return d.vec4f(structured, 1);
   }) as unknown as NonNullable<typeof material.colorNode>;
   material.normalNode = createStoneReliefNormal(
@@ -273,6 +301,7 @@ export const createWahrWeltStoneMaterial = (
     seed,
     reliefDepth,
     grainStrength,
+    detail.b.sub(.5).mul(.022).add(surface.r.sub(.5).mul(.06)),
   );
 
   return material;
@@ -515,7 +544,20 @@ export const createWahrWeltCrystalCoatingMaterial = (): THREE.MeshStandardNodeMa
   // only — the earlier 0.62 emission was rejected for its rainbow, not glow.
   const crystalColour = attribute<'vec3'>('color', 'vec3');
   const grazing = tslFloat(1).sub(normalView.z.abs()).clamp(0, 1);
-  material.emissiveNode = crystalColour.mul(tslFloat(0.22).add(grazing.pow(3).mul(0.18)));
+  material.emissiveNode = crystalColour.mul(tslFloat(0.20).add(grazing.pow(3).mul(0.16)));
   material.side = THREE.DoubleSide;
+  return material;
+};
+
+export const createWahrWeltCrystalPrismMaterial = (): THREE.MeshStandardNodeMaterial => {
+  const material = createWahrWeltCrystalCoatingMaterial();
+  material.name = 'rooted-violet-crystal-prisms';
+  material.roughness = 0.28;
+  material.side = THREE.FrontSide;
+  // Real facets carry the form. Restrained inner light leaves dark side faces
+  // and terminal planes readable through the scene's existing AO/toon pass.
+  const crystalColour = attribute<'vec3'>('color', 'vec3');
+  const grazing = tslFloat(1).sub(normalView.z.abs()).clamp(0, 1);
+  material.emissiveNode = crystalColour.mul(tslFloat(0.24).add(grazing.pow(3).mul(0.22)));
   return material;
 };

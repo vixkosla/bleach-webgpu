@@ -17,7 +17,10 @@ export const createArchitectureToon = (
   surfacePass.radius.value = 3.5;
   surfacePass.depthPhi.value = 2.5;
   surfacePass.normalPhi.value = 2;
-  surfacePass.lumaPhi.value = 1;
+  // Keep the small value boundaries in worn stone and mineral deposits.
+  // Broad light/AO still softens, but a near-unconditional colour average
+  // erased the albedo texture even when its world-space surface was detailed.
+  surfacePass.lumaPhi.value = 0.035;
   const contactPass = denoise(contactAo, depth, normal, camera);
   contactPass.radius.value = 3;
   contactPass.depthPhi.value = 4;

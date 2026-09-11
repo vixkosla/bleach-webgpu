@@ -7,7 +7,7 @@ import { createCloudNoiseTexture } from './cloudTexture';
 import { createUpperCloudVolume } from './upperCloudVolume';
 import { createUpperWeatherCeiling } from './upperWeatherCeiling';
 import { UPPER_ATMOSPHERE } from './upperAtmosphereLayout';
-import type { UpperEventLayout } from './upperEvent';
+import type { UpperAtmosphereCue, UpperEventLayout } from './upperEvent';
 
 // Back-to-front strata on a shared imaginary sky sphere. Each has a different
 // density scale, opacity and wind; they are alpha-composited in one draw.
@@ -28,6 +28,9 @@ export const createUpperClouds = (
   const time = uniform(0), backgroundTime = uniform(0), exposure = uniform(0);
   const ceiling = createUpperWeatherCeiling(layout, noise, time);
   const volume = createUpperCloudVolume(layout, time, exposure, ceiling);
+  const layers = SKY_LAYERS.map(() => ({
+    offset: uniform(new THREE.Vector3()), density: uniform(1),
+  }));
   // Art-direction controls remain live-editable without rebuilding the city.
   const controls = { density: uniform(1.35), glow: uniform(0.85), cavity: volume.controls.cavity,
     clearing: uniform(1), clearingWidth: uniform(3.2), clearingLight: uniform(0.25),
@@ -60,10 +63,11 @@ export const createUpperClouds = (
       direction.z.mul(7).sub(backgroundTime.mul(0.09)).add(index * 2).sin(),
       direction.x.mul(6).add(backgroundTime.mul(0.1)).sub(index).sin(),
     ).mul(0.018);
-    const fieldUv = direction.mul(layer.frequency).add(layer.offset).add(drift).add(rolling);
+    const fieldUv = direction.mul(layer.frequency).add(layer.offset).add(drift).add(rolling)
+      .add(layers[index]!.offset);
     const weather = texture3D(noise, fieldUv).r.mul(0.7)
       .add(texture3D(noise, fieldUv.mul(2.07).sub(layer.offset)).r.mul(0.3));
-    const opticalDepth = weather.smoothstep(0.27, 0.73).mul(controls.density);
+    const opticalDepth = weather.smoothstep(0.27, 0.73).mul(controls.density).mul(layers[index]!.density);
     const coverage = opticalDepth.mul(-2).exp().oneMinus().mul(layer.opacity);
     const transmission = opticalDepth.mul(-3.1).exp();
     const layerColor = color(layer.shade).mul(opticalDepth.mul(0.26).add(0.3))
@@ -145,26 +149,36 @@ export const createUpperClouds = (
   const horizonTravel = horizonB.negate().add(horizonB.mul(horizonB)
     .sub(horizonA.mul(horizonC)).max(0).sqrt()).div(horizonA).max(0);
   const distantPoint = cameraPosition.add(direction.mul(horizonTravel));
-  const distantOpenings = ceiling.distant(distantPoint).mul(exposure.smoothstep(0, 0.9));
+  const distantField = ceiling.distant(distantPoint);
+  const distantOpenings = distantField.x.mul(exposure.smoothstep(0, 0.9));
   const night = color(0x03040a).mul(1).add(color(0xe4d5d8).mul(distantOpenings).mul(0.10));
-  backdropMaterial.colorNode = vec4(mix(night,
-    mix(skyColor, white, clearMask).add(royalLight), weatherCoverage), 1);
+  const weatherBackground = mix(night,
+    mix(skyColor, white, clearMask).add(royalLight), weatherCoverage);
+  // Far mist/light remains behind the near volume, at its own world height.
+  // Previously its seams were confined to (1-weatherCoverage), disappearing
+  // wherever the upper background covered them. Story air reveals them in
+  // the overlapping region too; the inspector's zero mist keeps its look.
+  const farAir = distantField.y.mul(.34);
+  const farColor = color(0xc8b8d1).mul(.10).add(color(0xffefd9).mul(distantOpenings).mul(.5));
+  backdropMaterial.colorNode = vec4(mix(weatherBackground, farColor, farAir)
+    .add(color(0xf0e0d3).mul(distantOpenings).mul(controls.distantMist).mul(weatherCoverage).mul(.14)), 1);
   const backdrop = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), backdropMaterial);
   backdrop.name = 'upper-storm-background';
   backdrop.frustumCulled = false;
   backdrop.renderOrder = -1000;
   root.add(backdrop);
 
-  const update = (motion: number, birth: number, charge: number, opening: number, cloud: number) => {
+  const update = (motion: number, birth: number, charge: number, opening: number, cloud: number, cue?: UpperAtmosphereCue) => {
     time.value = motion;
     // Distant weather evolves at 70% of the near-cloud clock. Derive it from
     // absolute motion time so pause, HOLD and reverse seek remain reproducible.
-    backgroundTime.value = motion * 0.7;
-    exposure.value = Math.max(charge * 0.7, birth * 2.3) * (0.97 + Math.sin(motion * 0.38) * 0.03);
-    backdropMaterial.opacity = (0.75 + birth * 0.25) * controls.canopy.value;
-    volume.update(birth > 0 || charge > 0, cloud, 0.32 + birth * 0.68);
+    backgroundTime.value = cue ? cue.distantTime : motion * 0.7;
+    exposure.value = (cue ? (cue.atmosphereLight ?? cue.illumination) * 2.3 : Math.max(charge * 0.7, birth * 2.3))
+      * (0.97 + Math.sin(motion * 0.38) * 0.03);
+    backdropMaterial.opacity = (cue ? 1 : 0.75 + birth * 0.25) * controls.canopy.value;
+    volume.update(cue ? cloud > .001 : birth > 0 || charge > 0, cloud, cue ? 1 : 0.32 + birth * 0.68);
   };
-  return { root, textures: [volume.texture, volume.detailTexture, volume.coronalTransmission], noise, controls, volume, update, motionTime: time, backgroundMotionTime: backgroundTime, skyLayers: SKY_LAYERS,
+  return { root, textures: [volume.texture, volume.detailTexture, volume.coronalTransmission], noise, controls, layers, volume, update, motionTime: time, backgroundMotionTime: backgroundTime, skyLayers: SKY_LAYERS,
     dispose() { volume.dispose(); noise.dispose(); root.clear(); },
   };
 };

@@ -165,6 +165,7 @@ export const createUpperCloudVolume = (
   const coronalTransmission = createCoronalTransmissionTexture(texture, 64, cloudToMoon.clone().invert());
   const controls = { density: uniform(2.4), light: uniform(0.95), cavity: uniform(1.8), steps: uniform(64), detail: uniform(0.85), rays: uniform(12), rayClouds: uniform(1), sourceScale: uniform(1),
     centralClouds: uniform(1), centralLight: uniform(0.75), centralRays: uniform(0.22),
+    bankSpread: uniform(0), centralLift: uniform(0), centralFold: uniform(0),
     royalGlow: uniform(UPPER_ATMOSPHERE.castle.strength), royalRadius: uniform(UPPER_ATMOSPHERE.castle.radius) };
   const material = new THREE.MeshBasicNodeMaterial({ color: 0xffffff, side: THREE.BackSide,
     transparent: true, depthTest: false, depthWrite: false, fog: false });
@@ -205,7 +206,15 @@ export const createUpperCloudVolume = (
           p.x.mul(11).sub(clock.mul(0.14)).sin().mul(0.021),
           p.x.mul(8).add(p.y.mul(7)).add(clock.mul(0.16)).sin().mul(0.023),
         );
-        const field = texture3D(texture, p.add(0.5).add(wave), 0).toVar();
+        // Authored pressure opens the two banks within the existing volume.
+        // Sample their baked transmission in the same deformed coordinates.
+        // Leave the baked zero-density border in place. A uniform stretch
+        // would pull dense banks onto the box exit and expose a straight cut.
+        const deformationEnvelope = p.abs().x.max(p.abs().y).max(p.abs().z)
+          .smoothstep(.30, .48).oneMinus();
+        const bankUv = vec3(p.x.div(controls.bankSpread.mul(deformationEnvelope).add(1)), p.y, p.z)
+          .add(0.5).add(wave);
+        const field = texture3D(texture, bankUv, 0).toVar();
         const local = p.mul(vec3(SPAN.x, SPAN.y, SPAN.z)).add(vec3(OFFSET.x, OFFSET.y, OFFSET.z));
         const moonLocal = sourceFrame.mul(local).toVar();
         const zone = UPPER_ATMOSPHERE.weather;
@@ -264,7 +273,10 @@ export const createUpperCloudVolume = (
         // Connected pale folds sit behind the lunar body. This is the same
         // depth-clipped storm integral, with its own baked rear illumination.
         // Broad advection deforms the bank; resolved billows erode its crests.
-        const central = texture3D(centralTexture, p.add(0.5).add(wave.mul(0.45)), 0).toVar();
+        const fold = p.x.mul(9).add(clock.mul(.15)).sin().mul(.025).mul(controls.centralFold);
+        const centralUv = vec3(p.x, p.y.add(fold.sub(controls.centralLift).mul(deformationEnvelope)), p.z)
+          .add(0.5).add(wave.mul(0.45));
+        const central = texture3D(centralTexture, centralUv, 0).toVar();
         const centralDensity = central.r.mul(billows.r.mul(0.48).add(0.68))
           .mul(controls.centralClouds).mul(weatherCoverage).mul(2.1).toVar();
         // Dilute air in front of the cloud carries its baked light/shadow
@@ -303,7 +315,7 @@ export const createUpperCloudVolume = (
         // Strong parallel shafts of light crossing the cloud gaps. World
         // coordinates keep them attached to the event throughout an orbit.
         const distanceFromRim = moonLocal.xy.length().sub(controls.sourceScale).max(0);
-        const visibility = texture3D(coronalTransmission, p.add(0.5).add(wave), 0).r;
+        const visibility = texture3D(coronalTransmission, bankUv, 0).r;
         const thinGas = cloudDensity.smoothstep(0.008, 0.09)
           .mul(cloudDensity.smoothstep(0.35, 1.0).oneMinus());
         const pockets = thinGas.mul(eddies.smoothstep(0.24, 0.66)).mul(0.94).add(0.06);

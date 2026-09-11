@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
-import { Fn, If, Loop, float, getViewPosition, mix, screenUV, texture3D, uniform, vec2, vec3, vec4 } from 'three/tsl';
+import { ISLAND_RADIUS_X, ISLAND_RADIUS_Z } from '../scene/islandLayout';
+import { Fn, If, Loop, float, getViewPosition, mix, screenCoordinate, screenUV, texture3D, uniform, vec2, vec3, vec4 } from 'three/tsl';
 
 /** Thin luminous air over the streets, composited after the distant weather
  * and before lunar matter. World-depth ends each ray at the first facade/roof;
@@ -14,6 +15,8 @@ export const createCityHaze = (
 ) => {
   const controls = {
     strength: uniform(1),
+    outerBanks: uniform(1),
+    opacityLimit: uniform(.24),
     density: uniform(0.0032),
     height: uniform(28),
     // Reference-look tuning (Cursor, 2026-09-09, with Namikadzee's layer
@@ -32,23 +35,30 @@ export const createCityHaze = (
     const delta = hit.sub(origin);
     const distance = delta.length();
     const ray = delta.div(distance.max(0.0001));
-    const safeRay = ray.abs().max(vec3(0.00001))
-      .mul(ray.greaterThanEqual(vec3(0)).select(vec3(1), vec3(-1)));
-    const near = vec3(-520, deckY + 0.5, centerZ - 640).sub(origin).div(safeRay);
-    const far = vec3(520, deckY + 116, centerZ + 640).sub(origin).div(safeRay);
-    const lo = near.min(far), hi = near.max(far);
-    const entry = lo.x.max(lo.y).max(lo.z).max(0);
-    const exit = hi.x.min(hi.y).min(hi.z).min(distance);
+    // Intersect the low height slab; the existing elliptical density fade
+    // bounds it horizontally. Avoid a hard side-face boundary in street views.
+    const safeY = ray.y.abs().max(.00001).mul(ray.y.greaterThanEqual(0).select(1, -1));
+    const near = float(deckY + .5).sub(origin.y).div(safeY);
+    const far = float(deckY + 190).sub(origin.y).div(safeY);
+    const entry = near.min(far).max(0);
+    const exit = near.max(far).min(distance).min(entry.add(2400));
     const light = vec3(0).toVar();
     const coverage = float(0).toVar();
+    const outerCoverage = float(0).toVar();
     If(exit.greaterThan(entry).and(controls.strength.greaterThan(0)), () => {
-      // Integrate only the bounded low layer. Twelve smooth samples suffice
+      // Integrate only the bounded low layer. Twenty-four jittered samples suffice
       // for this dilute medium; no new pass, render target or noise allocation.
-      const step = exit.sub(entry).div(12);
-      Loop(12, ({ i }) => {
-        const p = origin.add(ray.mul(entry.add(float(i).add(0.5).mul(step))));
+      const step = exit.sub(entry).div(24);
+      // Stable subpixel offsets remove the horizontal integration shelves
+      // in grazing island views. Noise is spatial, never a temporal flicker.
+      const jitter = screenCoordinate.xy.dot(vec2(12.9898, 78.233)).sin().mul(43758.5453).fract();
+      Loop(24, ({ i }) => {
+        const p = origin.add(ray.mul(entry.add(float(i).add(jitter.mul(.8).add(.1)).mul(step))));
         const local = p.sub(vec3(0, deckY, centerZ));
-        const edge = local.xz.div(vec2(510, 625)).length().smoothstep(0.80, 1).oneMinus();
+        const edge = local.xz.div(vec2(ISLAND_RADIUS_X * 1.07, ISLAND_RADIUS_Z * 1.07))
+          .length().smoothstep(.84, 1.05).oneMinus();
+        const outer = local.xz.div(vec2(500, 620)).length().smoothstep(.84, 1.19)
+          .mul(controls.outerBanks);
         const drift = vec3(time.mul(0.00065), time.mul(-0.00012), time.mul(-0.00038));
         // The shared texture is a 32-cell lattice: these coordinates give
         // broad 50–60m billows, with softer 25m folds instead of fine stripes.
@@ -61,21 +71,34 @@ export const createCityHaze = (
           .mul(local.y.smoothstep(0.5, 6)).mul(local.y.smoothstep(70, 116).oneMinus());
         const billows = broad.mul(0.66).add(folds.mul(0.34)).smoothstep(0.28, 0.72)
           .mul(0.85).add(0.15);
-        const extinction = edge.mul(vertical).mul(billows).mul(controls.density)
-          .mul(controls.strength);
+        // A wind front moves across the actual ward coordinates. Roofs and
+        // towers stay fixed while banks lift, fold and uncover them in sequence.
+        const wind = time.mul(.29).add(local.x.mul(.008)).add(local.z.mul(.005));
+        const bankLift = wind.sin().mul(32).add(57).add(broad.sub(.5).mul(35));
+        const bankHeight = local.y.sub(bankLift).div(39).pow(2).mul(-.5).exp()
+          .mul(local.y.smoothstep(.5, 10)).mul(local.y.smoothstep(125, 190).oneMinus());
+        const bankDensity = wind.sin().smoothstep(-.45, .65).mul(1.15);
+        const outerExtinction = bankHeight.mul(bankDensity).mul(outer).mul(3.7);
+        const extinction = edge.mul(vertical.add(outerExtinction)).mul(billows)
+          .mul(controls.density).mul(controls.strength);
         const alpha = extinction.mul(step).negate().exp().oneMinus();
         // A small lavender lift within the air, subtly brighter toward the
         // citadel; the hue sits between the violet growth and the pale keep.
         // This does not alter stone/crystal palette or exposure.
         const innerLight = local.xz.div(vec2(260, 340)).length().pow(2).mul(-0.5).exp();
-        const tint = mix(vec3(0.30, 0.20, 0.40), vec3(0.70, 0.50, 0.80),
-          broad.mul(0.35).add(innerLight.mul(0.5))).mul(controls.glow);
-        light.addAssign(tint.mul(coverage.oneMinus()).mul(alpha));
-        coverage.addAssign(coverage.oneMinus().mul(alpha));
+        const tint = mix(mix(vec3(0.30, 0.20, 0.40), vec3(0.70, 0.50, 0.80),
+          broad.mul(0.35).add(innerLight.mul(0.5))),
+          vec3(.51, .46, .61).mul(broad.mul(.26).add(.87)), outer.mul(.8))
+          .mul(controls.glow);
+        const weight = coverage.oneMinus().mul(alpha);
+        light.addAssign(tint.mul(weight));
+        outerCoverage.addAssign(weight.mul(outerExtinction.div(vertical.add(outerExtinction).max(.0001))));
+        coverage.addAssign(weight);
       });
     });
     // Cap the veil to retain dark apertures and the existing painted planes.
-    const opacity = coverage.min(0.24);
+    const bankFraction = outerCoverage.div(coverage.max(.0001));
+    const opacity = coverage.min(mix(controls.opacityLimit, .88, bankFraction));
     return vec4(light.div(coverage.max(0.0001)).mul(opacity), opacity);
   })();
   return { layer, controls };

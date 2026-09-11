@@ -43,6 +43,16 @@ export const createUpperLayout = (crown: THREE.Vector3, citadelOrientation = new
 
 export type UpperEventLayout = ReturnType<typeof createUpperLayout>;
 
+/** Story cues keep weather alive before and after the provisional lunar fade.
+ * Density shape/scale stays mature; illumination has its own slower envelope. */
+export interface UpperAtmosphereCue {
+  presence: number;
+  illumination: number;
+  atmosphereLight?: number;
+  cloudOpacity: number;
+  distantTime: number;
+}
+
 // Small charge-column texture, generated without a canvas/network dependency.
 const createSoftTexture = (): THREE.DataTexture => {
   const size = 128;
@@ -159,13 +169,18 @@ export const createUpperEvent = (crown: THREE.Vector3, citadelOrientation = new 
 
   let state = sampleUpperEvent(0);
   let motion = 0;
-  const update = (time: number, motionTime = time): void => {
+  const update = (time: number, motionTime = time, cue?: UpperAtmosphereCue): void => {
     state = sampleUpperEvent(time);
+    if (cue) state = { ...state, visible: true, birth: cue.presence,
+      charge: 0, shock: 0, scale: 1, cloud: cue.cloudOpacity };
     motion = Number.isFinite(motionTime) ? motionTime : 0;
     group.visible = state.visible;
-    clouds.update(motion, state.birth, state.charge, state.opening, state.cloud);
-    matter.update(state.visible, state.birth);
-    crossLight.update(state.visible, state.birth);
+    clouds.update(motion, state.birth, state.charge, state.opening, state.cloud, cue);
+    matter.update(cue ? cue.presence > .001 : state.visible, cue ? 1 : state.birth);
+    // Temporary entry/exit only: fade the same complete volume, never shrink
+    // it into a different object. The sky is not gated by this visibility.
+    matter.material.opacity = cue ? cue.presence : 1;
+    crossLight.update(state.visible, cue ? cue.illumination : state.birth);
     event.scale.setScalar(state.scale);
     crescentMaterial.opacity = state.birth;
     halo.rotation.copy(crescent.rotation);

@@ -1,17 +1,21 @@
 import * as THREE from 'three/webgpu';
+import { createFloatingIsland } from './floatingIsland';
+import { createCityOutskirts, OUTSKIRT_TOWERS } from './cityOutskirts';
 import {
   createWahrWeltFlatMaterial,
   createWahrWeltFloorMaterial,
   createWahrWeltCrystalCoatingMaterial,
+  createWahrWeltCrystalPrismMaterial,
   createWahrWeltStoneMaterial,
 } from '../materials/wahrWeltCityMaterial';
 import { CITY_DECK_Y, TOWER_Z } from './constants';
 import { CrystalCoatingBuilder } from './crystalCoating';
+import { CrystalClusterBuilder, collectCrystalWindowBounds } from './crystalClusters';
 import { createCitadelCoatingOptions, clipCitadelCoating } from './citadelGrowth';
 import type { CitadelPrism, PrismFace } from './citadelPrisms';
-import { addCitadelGeometry, createCitadelPrisms, intersectsCitadelFootprint, CITADEL_TIERS, CITADEL_WORLD_SCALE } from './citadelGeometry';
+import { addCitadelGeometry, citadelTierPoint, createCitadelPrisms, intersectsCitadelFootprint, CITADEL_TIERS, CITADEL_WORLD_SCALE } from './citadelGeometry';
 
-interface CityMassSpec {
+export interface CityMassSpec {
   name: string;
   x: number;
   z: number;
@@ -84,7 +88,7 @@ interface CityMillVariantRecipe {
   eaveScale: number;
 }
 
-interface CityFreestandingTowerSpec {
+export interface CityFreestandingTowerSpec {
   name: string;
   x: number;
   z: number;
@@ -3037,7 +3041,8 @@ const addCityGrowthLayer = (
   specs: readonly CityMassSpec[],
   material: THREE.Material,
 ): void => {
-  const coating = new CrystalCoatingBuilder();
+  const clusters = new CrystalClusterBuilder({ kind: 'city', windowBounds: collectCrystalWindowBounds(parent) });
+  const coating = new CrystalCoatingBuilder('city', false, clusters.addSurface);
   for (let specIndex = 0; specIndex < specs.length; specIndex += 1) {
     const spec = specs[specIndex]!;
     if (getGothicCivicSpec(spec.name)) continue;
@@ -3096,6 +3101,7 @@ const addCityGrowthLayer = (
     || (mesh.name.startsWith('gothic-civic-')
       && /-(?:entry-roof|faceted-roof-fill|lantern-cap-fill|spire-caps)$/.test(mesh.name)));
   coating.build(parent, material, 'blockout-violet-growth-crystal-coating');
+  clusters.build(parent, createWahrWeltCrystalPrismMaterial());
 };
 
 const addCityAgingLayer = (
@@ -3389,8 +3395,6 @@ export const createBlockoutCity = (): THREE.Group => {
   city.position.z = TOWER_Z;
 
   const outlineMaterial = createOutlineMaterial();
-  const islandSideMaterial = createWahrWeltFlatMaterial(0x494455);
-  const islandUndersideMaterial = createWahrWeltFlatMaterial(0x2d2938);
   // First accepted texture pass: large pale slabs with low-contrast engraved
   // joints. This gives the floor scale without restoring the rejected purple
   // mottling or turning the streets into dark asphalt ribbons.
@@ -3442,10 +3446,10 @@ export const createBlockoutCity = (): THREE.Group => {
   // hundreds of differently sized buildings do not allocate or stretch their
   // own normal maps.
   const cityMassMaterialLight = createWahrWeltStoneMaterial({
-    base: 0xdcdadf,
-    top: 0xeaeaf0,
-    joint: 0x9694a2,
-    ageTint: 0x9088a0,
+    base: 0xeeeaf2,
+    top: 0xf5f1f7,
+    joint: 0xaaa2b8,
+    ageTint: 0x887399,
     courseWidth: 7.2,
     courseHeight: 3.1,
     originY: CITY_DECK_Y,
@@ -3455,10 +3459,10 @@ export const createBlockoutCity = (): THREE.Group => {
     ageStrength: 0.05,
   });
   const cityMassMaterialMid = createWahrWeltStoneMaterial({
-    base: 0xd2d0d8,
-    top: 0xe4e2ea,
-    joint: 0x8e8c9a,
-    ageTint: 0x8a82a0,
+    base: 0xe1dce9,
+    top: 0xede8f1,
+    joint: 0xa299b0,
+    ageTint: 0x806b93,
     courseWidth: 7.2,
     courseHeight: 3.1,
     originY: CITY_DECK_Y,
@@ -3468,10 +3472,10 @@ export const createBlockoutCity = (): THREE.Group => {
     ageStrength: 0.06,
   });
   const cityMassMaterialDark = createWahrWeltStoneMaterial({
-    base: 0xc4c0cc,
-    top: 0xd6d2e0,
-    joint: 0x86849a,
-    ageTint: 0x807898,
+    base: 0xd1cade,
+    top: 0xded8e8,
+    joint: 0x958ba8,
+    ageTint: 0x786489,
     courseWidth: 7.2,
     courseHeight: 3.1,
     originY: CITY_DECK_Y,
@@ -3483,10 +3487,14 @@ export const createBlockoutCity = (): THREE.Group => {
   const windowMaterial = createWahrWeltFlatMaterial(0x171321);
   const stainedGlassMaterial = createWahrWeltFlatMaterial(0x21182a);
   const facadeReliefMaterial = createWahrWeltFlatMaterial(0xd2d0d8);
-  // Roofs share one neutral cool-white base. The violet visible in the anime
-  // belongs to the cold night key and surrounding glow, not to a separately
-  // painted slate material; silhouette and pitch distinguish Gothic roofs.
-  const roofMaterial = createWahrWeltFlatMaterial(0xc2c0ca);
+  // The same chalk/mineral surface reaches the roof planes. World projection
+  // and mipmaps keep the texture at a stable scale on pitched and flat roofs.
+  const roofMaterial = createWahrWeltStoneMaterial({
+    base: 0xd1cade, top: 0xe3deeb, joint: 0xa299b0, ageTint: 0x887399,
+    originY: CITY_DECK_Y, courseWidth: 7.2, courseHeight: 3.1,
+    seed: 3.7, surfaceScale: 70, mineralStrength: .4,
+    reliefDepth: .065, grainStrength: .003, ageStrength: .04,
+  });
   const gothicRoofMaterial = roofMaterial;
   const growthMaterial = createWahrWeltCrystalCoatingMaterial();
   const ageCrackMaterial = createWahrWeltFlatMaterial(0x6d6362);
@@ -3501,19 +3509,7 @@ export const createBlockoutCity = (): THREE.Group => {
     dark: cityMassMaterialDark,
   };
 
-  const islandGeometry = new THREE.CylinderGeometry(1, 1, 28, 64, 1, false);
-  addOutlinedGeometry(
-    city,
-    islandGeometry,
-    // CylinderGeometry material groups are side, top cap, bottom cap. Keeping
-    // them separate prevents the pale paving shader from washing out the
-    // island's heavy edge and underside.
-    [islandSideMaterial, islandDeckMaterial, islandUndersideMaterial],
-    outlineMaterial,
-    new THREE.Vector3(0, CITY_DECK_Y - 14, 0),
-    new THREE.Vector3(500, 1, 620),
-    'blockout-island',
-  );
+  city.add(createFloatingIsland(islandDeckMaterial));
 
   for (const street of CITY_STREETS) {
     const dx = street.x2 - street.x1;
@@ -3626,6 +3622,24 @@ export const createBlockoutCity = (): THREE.Group => {
     [...CITY_MASSES, ...CITY_INFILL_MASSES],
     growthMaterial,
   );
+  const outskirts = new THREE.Group();
+  outskirts.name = 'city-outer-wards';
+  const outerLots = createCityOutskirts();
+  for (const tone of ['light', 'mid', 'dark'] as const) {
+    const ward = new THREE.Group();
+    ward.name = `outer-wards-${tone}`;
+    const lots = outerLots.filter(lot => lot.tone === tone);
+    addCityInfillInstances(ward, lots, materials[tone]);
+    addCityFacadeLayer(ward, lots, windowMaterial, windowMaterial, facadeReliefMaterial, roofMaterial);
+    outskirts.add(ward);
+  }
+  for (const tower of OUTSKIRT_TOWERS) {
+    addFreestandingCityTower(outskirts, tower, cityMassMaterialMid, roofMaterial,
+      freestandingTowerSlitMaterial, outlineMaterial);
+  }
+  outskirts.userData.lots = outerLots.length;
+  outskirts.userData.towers = OUTSKIRT_TOWERS.length;
+  city.add(outskirts);
   return city;
 };
 
@@ -3633,15 +3647,21 @@ const addCitadelGrowthLayer = (
   parent: THREE.Group,
   material: THREE.Material,
 ): void => {
-  const coating = new CrystalCoatingBuilder('citadel');
+  const clusters = new CrystalClusterBuilder({ kind: 'citadel',
+    metricScale: new THREE.Vector3(...CITADEL_WORLD_SCALE),
+    masonry: createCitadelPrisms(CITY_DECK_Y),
+    openings: parent.userData.citadelApertureClearances as CitadelPrism[],
+  });
+  const coating = new CrystalCoatingBuilder('citadel', false, clusters.addSurface);
   const faces = parent.userData.citadelExposedFaces as PrismFace[];
   coating.addPolygonAssembly(faces, new THREE.Vector3(...CITADEL_WORLD_SCALE),
     createCitadelCoatingOptions(CITADEL_WORLD_SCALE, CITY_DECK_Y));
   coating.build(parent, material, 'blockout-citadel-growth-crystal-coating');
   const mesh = parent.getObjectByName('blockout-citadel-growth-crystal-coating') as THREE.Mesh;
   clipCitadelCoating(mesh, [...createCitadelPrisms(CITY_DECK_Y),
-    ...(parent.userData.citadelApertureVoids as CitadelPrism[])]);
+    ...(parent.userData.citadelApertureClearances as CitadelPrism[])]);
   mesh.userData.distribution = 'exposed-polygonal-assembly';
+  clusters.build(parent, createWahrWeltCrystalPrismMaterial());
 };
 
 const addCitadelAgingLayer = (
@@ -3650,13 +3670,14 @@ const addCitadelAgingLayer = (
 ): void => {
   const wallCracks: CityDetailTransform[] = CITADEL_TIERS
     .filter(tier => tier.top - tier.bottom > 30)
-    .map((tier, index) => ({
-      x: tier.x + tier.width * 0.17,
-      y: CITY_DECK_Y + tier.top - 14,
-      z: tier.z + tier.depth * 0.5 + 0.08,
-      width: 8, height: 18, depth: 0.12,
-      rotationY: 0, rotationZ: index % 2 ? -0.13 : 0.16,
-    }));
+    .map((tier, index) => {
+      const point = citadelTierPoint(tier, tier.width * .17, tier.depth * .5 + .08);
+      return {
+        x: point.x, y: CITY_DECK_Y + tier.top - 14, z: point.y,
+        width: 8, height: 18, depth: 0.12,
+        rotationY: 'rotation' in tier ? tier.rotation : 0, rotationZ: index % 2 ? -0.13 : 0.16,
+      };
+    });
   addDetailInstances(
     parent,
     'blockout-citadel-aging-cracks',
@@ -3682,14 +3703,16 @@ export const createBlockoutTower = (): BlockoutTowerController => {
   // lights provide hierarchy; separate light/dark paints caused false colour
   // variation that is absent from the reference.
   const citadelMaterial = createWahrWeltStoneMaterial({
-    base: 0xc8c6ce,
-    top: 0xe0dee6,
-    joint: 0x928ea0,
-    ageTint: 0x9088a0,
+    base: 0xe5e1ea,
+    top: 0xf0ecf3,
+    joint: 0xaaa0b6,
+    ageTint: 0x857194,
     courseWidth: 14.5,
     courseHeight: 5.8,
     originY: CITY_DECK_Y,
     seed: 8.4,
+    surfaceScale: 105,
+    mineralStrength: .56,
     reliefDepth: 0.095,
     grainStrength: 0.004,
     ageStrength: 0.06,

@@ -2,68 +2,50 @@ import * as THREE from 'three/webgpu';
 import { polygonArea, prismContains, prismPlanes, subtractPrism } from './citadelPrisms';
 import type { CitadelPrism, PrismFace } from './citadelPrisms';
 
-// Openings are laid out per structural bay (the wall between two pilasters or
-// corner piers), so window rows never collide with the vertical articulation.
-// Edge 4 faces the street, 0 the rear, 2 east and 6 west; odd edges are the
-// short diagonal walls, which stay blank.
+// The reference reads as enormous, mostly blank rectangular wall masses.
+// Small individual openings leave most of each face blank. Long comb-like
+// slit galleries exaggerated both the window scale and the repeated stripes.
+// Edge 4 faces the street, 0 the rear, 2 east and 6 west.
 interface GalleryConfig {
   owner: string;
   edges: readonly number[];
-  perBay: number;
+  count: number;
   spacing: number;
   width: number;
   depth: number;
-  /**
-   * Storey rows as [distance of the row centre below the tier top, height].
-   * Rows are placed between the string courses of citadelGeometry (0.42 and
-   * 0.72 of the tier height) and clear of the plinth band and the cornice, so
-   * the stacked-storey read of the references never crosses a moulding.
-   */
+  /** Row centre below the structural roof, and its opening height. */
   rows: readonly (readonly [number, number])[];
-  /** Keep a shortened row where spires or the arch feet block part of it. */
-  partial?: boolean;
 }
 const GALLERIES: readonly GalleryConfig[] = [
-  // Loggia around the crown keep, read in every final frame below the arch.
-  { owner: 'crown-keep', edges: [0, 2, 4, 6], perBay: 5, spacing: 5.0, width: 3.0, depth: 3.4, rows: [[8, 10]], partial: true },
-  { owner: 'upper-keep', edges: [0, 2, 4, 6], perBay: 2, spacing: 5.0, width: 2.8, depth: 3, rows: [[9.5, 9], [21.5, 8]] },
-  { owner: 'upper-west-slab', edges: [4, 6], perBay: 2, spacing: 5.0, width: 2.8, depth: 3, rows: [[9, 8], [21, 8], [33, 8]] },
-  { owner: 'upper-east-slab', edges: [2], perBay: 3, spacing: 5.0, width: 2.8, depth: 3, rows: [[9, 8], [20, 7]] },
-  { owner: 'upper-front-step', edges: [2, 4], perBay: 3, spacing: 5.0, width: 2.6, depth: 3, rows: [[8, 7]] },
-  { owner: 'upper-rear-step', edges: [0, 2, 6], perBay: 3, spacing: 5.0, width: 2.6, depth: 3, rows: [[8.5, 7]] },
-  { owner: 'middle-keep', edges: [2, 4, 6], perBay: 3, spacing: 5.0, width: 2.8, depth: 3, rows: [[10, 7.5], [22, 7.5], [44, 7.5]] },
-  // The two shoulders are the tallest continuous walls in every frame: tall
-  // paired lancets under the cornice, then a storey row between each course.
-  { owner: 'west-keep', edges: [4, 6], perBay: 2, spacing: 5.0, width: 2.8, depth: 3,
-    rows: [[13, 12], [27, 8], [44, 8], [57, 8], [80, 8], [95, 8], [110, 8]] },
-  { owner: 'east-keep', edges: [2, 4], perBay: 2, spacing: 5.0, width: 2.8, depth: 3,
-    rows: [[13, 12], [27, 8], [46, 8], [60, 8], [72, 8], [92, 8], [106, 8], [120, 8]] },
-  { owner: 'rear-keep', edges: [0], perBay: 2, spacing: 5.0, width: 2.8, depth: 3, rows: [[9, 8], [32, 8], [55, 8]] },
-  { owner: 'lower-keep', edges: [0, 2, 4, 6], perBay: 3, spacing: 5.0, width: 2.8, depth: 3,
-    rows: [[10.5, 8], [20.5, 7], [33, 8], [45, 8], [64, 8], [77, 8]] },
-  // Gatehouse: one row above the portico crest, between its flanking buttresses,
-  // and two storeys on the flanks above the low halls.
-  { owner: 'gate-block', edges: [4], perBay: 5, spacing: 5.2, width: 2.6, depth: 3, rows: [[9, 7]] },
-  { owner: 'gate-block', edges: [2, 6], perBay: 3, spacing: 5.2, width: 2.6, depth: 3, rows: [[9, 7], [18, 6]] },
-  // Low halls: short gallery rows directly beneath their cornices, then the
-  // storeys below down to the plinth band.
-  { owner: 'front-west-hall', edges: [4, 6], perBay: 3, spacing: 5.0, width: 2.8, depth: 3, rows: [[8.5, 6.5], [19, 6.5], [30, 6.5]] },
-  { owner: 'front-east-hall', edges: [2, 4], perBay: 3, spacing: 5.0, width: 2.8, depth: 3, rows: [[8.5, 6.5], [20, 6.5], [32, 6.5], [44, 6.5]] },
-  { owner: 'rear-west-hall', edges: [0, 6], perBay: 3, spacing: 5.0, width: 2.8, depth: 3, rows: [[8.5, 6.5], [19, 6.5], [28, 6]] },
-  { owner: 'rear-east-hall', edges: [0, 2], perBay: 3, spacing: 5.0, width: 2.8, depth: 3, rows: [[8.5, 6.5], [20, 6.5], [31.5, 6.5], [41, 6]] },
+  { owner: 'middle-upper-court', edges: [0, 2, 4, 6], count: 2, spacing: 30, width: .85, depth: 1.1, rows: [[10, 1.7]] },
+  { owner: 'high-inner-keep', edges: [0, 2, 4, 6], count: 1, spacing: 6, width: .85, depth: 1.1, rows: [[9, 1.6]] },
+  { owner: 'crown-keep', edges: [0, 2, 4, 6], count: 1, spacing: 5, width: .9, depth: 1.1, rows: [[6, 1.5]] },
+  { owner: 'upper-keep', edges: [0, 2, 4, 6], count: 2, spacing: 26, width: .85, depth: 1.1, rows: [[10, 1.7]] },
+  { owner: 'upper-west-slab', edges: [4, 6], count: 1, spacing: 6, width: .8, depth: 1.0, rows: [[10, 1.5]] },
+  { owner: 'upper-east-slab', edges: [0, 2], count: 1, spacing: 6, width: .8, depth: 1.0, rows: [[9, 1.5]] },
+  { owner: 'middle-keep', edges: [0, 2, 4, 6], count: 2, spacing: 32, width: .9, depth: 1.1, rows: [[12, 1.8]] },
+  { owner: 'west-keep', edges: [4, 6], count: 2, spacing: 16, width: .85, depth: 1.1, rows: [[10, 1.7]] },
+  { owner: 'east-keep', edges: [2, 4], count: 2, spacing: 15, width: .85, depth: 1.1, rows: [[11, 1.7]] },
+  { owner: 'rear-keep', edges: [0], count: 2, spacing: 19, width: .85, depth: 1.0, rows: [[10, 1.6]] },
+  { owner: 'lower-keep', edges: [0, 4], count: 2, spacing: 30, width: .9, depth: 1.1, rows: [[12, 1.8]] },
+  { owner: 'gate-block', edges: [4], count: 1, spacing: 6, width: .8, depth: 1.0, rows: [[9, 1.5]] },
+  { owner: 'front-west-hall', edges: [4, 6], count: 2, spacing: 22, width: .9, depth: 1.1, rows: [[11, 1.8]] },
+  { owner: 'front-east-hall', edges: [2, 4], count: 2, spacing: 23, width: .9, depth: 1.1, rows: [[12, 1.8]] },
+  { owner: 'rear-west-hall', edges: [0, 6], count: 2, spacing: 20, width: .85, depth: 1.0, rows: [[10, 1.6]] },
+  { owner: 'rear-east-hall', edges: [0, 2], count: 2, spacing: 19, width: .85, depth: 1.0, rows: [[11, 1.6]] },
+  { owner: 'west-buttress-hall', edges: [4, 6], count: 1, spacing: 6, width: .8, depth: 1.0, rows: [[9, 1.5]] },
+  { owner: 'rear-west-tower', edges: [0, 6], count: 1, spacing: 6, width: .8, depth: 1.0, rows: [[10, 1.5]] },
+  { owner: 'rear-east-annex', edges: [0, 2], count: 1, spacing: 6, width: .8, depth: 1.0, rows: [[8, 1.5]] },
+  { owner: 'front-inner-keep', edges: [4], count: 1, spacing: 6, width: .85, depth: 1.1, rows: [[10, 1.7]] },
+  { owner: 'front-west-step', edges: [4], count: 1, spacing: 6, width: .8, depth: 1.0, rows: [[9, 1.5]] },
+  { owner: 'upper-west-buttress', edges: [4, 6], count: 1, spacing: 6, width: .8, depth: 1.0, rows: [[8, 1.5]] },
+  { owner: 'east-inner-pylon', edges: [4], count: 1, spacing: 6, width: .8, depth: 1.0, rows: [[9, 1.5]] },
+  { owner: 'east-outer-pylon', edges: [2], count: 1, spacing: 6, width: .8, depth: 1.0, rows: [[10, 1.5]] },
 ];
 
-// The single deep portal of the gatehouse. Its arch and stepped reveal are
-// built in front of this void by citadelGeometry.
-export const PORTAL = { owner: 'gate-block', edge: 4, width: 24, height: 48, depth: 14, sill: 5 } as const;
-
-export interface FacadeBay {
-  owner: string;
-  edge: number;
-  /** Distances along the edge from its first vertex, in citadel units. */
-  start: number;
-  end: number;
-}
+// A subordinate entrance at street level; it no longer occupies nearly a
+// quarter of the whole castle height. The deep passage and approach remain.
+export const PORTAL = { owner: 'gate-block', edge: 4, width: 16, height: 32, depth: 14, sill: 5 } as const;
 
 export interface CitadelAperture {
   owner: string;
@@ -106,7 +88,7 @@ const insideWall = (faces: readonly PrismFace[], center: THREE.Vector3, tangent:
 };
 
 export const createCitadelFacade = (
-  source: readonly PrismFace[], prisms: readonly CitadelPrism[], bays: readonly FacadeBay[],
+  source: readonly PrismFace[], prisms: readonly CitadelPrism[],
   isBlocked: (front: THREE.Vector3[], center: THREE.Vector3) => boolean = () => false,
 ) => {
   const apertures: CitadelAperture[] = [];
@@ -144,13 +126,14 @@ export const createCitadelFacade = (
     const prism = prisms.find(p => p.name === group.owner);
     if (!prism) continue;
     for (const edge of group.edges) {
-      const { a, tangent } = edgeFrame(prism, edge);
-      for (const bay of bays.filter(b => b.owner === group.owner && b.edge === edge)) {
-        const clear = bay.end - bay.start - 3;
-        let count = group.perBay;
+      const { a, b, tangent } = edgeFrame(prism, edge);
+      {
+        const span = a.distanceTo(b);
+        const clear = span - 8;
+        let count = group.count;
         while (count > 1 && (count - 1) * group.spacing + group.width > clear) count--;
         if (group.width > clear) continue;
-        const middle = (bay.start + bay.end) * 0.5;
+        const middle = span * 0.5;
         for (const [fromTop, height] of group.rows) {
           const row: CitadelAperture[] = [];
           for (let i = 0; i < count; i++) {
@@ -160,8 +143,8 @@ export const createCitadelFacade = (
               `gallery-${group.owner}-${edge}-${Math.round(along)}-${Math.round(center.y)}`);
             if (opening) row.push(opening);
           }
-          // A bay either receives its whole rhythm or stays a clean wall panel.
-          if (row.length === count || (group.partial && row.length >= 2)) apertures.push(...row);
+          // An attached structure may hide one of these isolated openings.
+          apertures.push(...row);
         }
       }
     }
@@ -196,5 +179,19 @@ export const createCitadelFacade = (
       facade.push({ owner: aperture.owner, normal, vertices });
     }
   }
-  return { faces: facade, apertures, voids: apertures.map(a => a.void) };
+  // Small slits must remain visible obliquely through the raised mineral
+  // skin. Keep the actual masonry void exact, but widen the crystal clearance
+  // toward the viewer. This catches overhangs just outside a narrow jamb.
+  const clearances: CitadelPrism[] = apertures.map(aperture => {
+    const plan = [[-1, -aperture.depth], [1, -aperture.depth], [1, 8], [-1, 8]].map(([side, distance]) => {
+      const halfWidth = aperture.width * .5 + (distance! > 0 ? 2.2 : 0);
+      const p = aperture.center.clone().addScaledVector(aperture.tangent, side! * halfWidth)
+        .addScaledVector(aperture.normal, distance!);
+      return new THREE.Vector2(p.x, p.z);
+    });
+    if (plan.reduce((sum, p, i) => sum + p.x * plan[(i + 1) % 4]!.y - p.y * plan[(i + 1) % 4]!.x, 0) < 0) plan.reverse();
+    return { name: `${aperture.void.name}-crystal-clearance`, plan,
+      bottom: aperture.void.bottom - .5, top: aperture.void.top + .5 };
+  });
+  return { faces: facade, apertures, voids: apertures.map(a => a.void), clearances };
 };

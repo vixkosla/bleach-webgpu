@@ -5,6 +5,8 @@ export interface CitadelPrism {
   plan: THREE.Vector2[]; // Counterclockwise in X/Z.
   bottom: number;
   top: number;
+  /** Elevated connectors need a visible lower face over the open air. */
+  underside?: boolean;
 }
 export interface PrismFace {
   owner: string;
@@ -81,6 +83,8 @@ export const prismFaces = (prism: CitadelPrism): PrismFace[] => {
     }),
     { owner: prism.name, normal: new THREE.Vector3(0, 1, 0),
       vertices: prism.plan.map(v => p(v, prism.top)).reverse() },
+    ...(prism.underside ? [{ owner: prism.name, normal: new THREE.Vector3(0, -1, 0),
+      vertices: prism.plan.map(v => p(v, prism.bottom)) }] : []),
   ];
 };
 

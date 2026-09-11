@@ -625,3 +625,45 @@ body.hud-hidden #controls {
 #explore-scene { position: fixed; z-index: 18; right: max(24px, env(safe-area-inset-right)); bottom: max(24px, env(safe-area-inset-bottom)); padding: 12px 18px; border: 1px solid #c9b3e044; border-radius: 24px; background: #0b0714b8; color: #e3d8ed; font-size: 13px; text-decoration: none; backdrop-filter: blur(12px); }
 #explore-scene[hidden] { display: none; }
 #explore-scene:hover { border-color: #c9b3e0; background: #24172f; }
+
+/* The public viewer has two modes on the same live canvas. */
+#film-controls { display:grid; grid-template-columns:42px minmax(120px,1fr) auto auto auto; gap:14px; align-items:center; }
+#controls { display:block; }
+#controls [hidden], #scene-entry[hidden] { display:none !important; }
+#viewer-modes { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:14px; }
+.view-switch { display:flex; padding:3px; gap:3px; border:1px solid #cebbdf33; border-radius:999px; background:#120e1bdb; }
+#controls .view-switch button { min-width:88px; min-height:38px; border:0; background:transparent; font-size:13px; color:#bbafc9; }
+#controls .view-switch button[aria-pressed=true] { background:#e0cfed; color:#21172c; }
+.frame-life { display:flex; align-items:center; gap:10px; }
+#controls #frame-motion, #controls #hide-panel { min-width:32px; min-height:32px; padding:0 7px; font-size:14px; }
+#viewer-status { color:#b4a6c3; font-size:9px; letter-spacing:.13em; }
+body[data-view] #controls { inset:auto max(24px,4vw) max(24px,env(safe-area-inset-bottom)); max-width:1040px; margin-inline:auto; padding:16px 20px; border:1px solid #cebbdf2b; border-radius:18px; background:#100c18cf; backdrop-filter:blur(18px); }
+body[data-view] #film-controls { grid-template-columns:40px minmax(90px,1fr) auto; }
+body[data-view] #inspect-mode, body[data-view] #hud { display:none; }
+body[data-view] #controls.is-hidden, body[data-view].hud-hidden #controls { opacity:0; transform:translateY(14px); pointer-events:none; }
+body[data-view].hud-hidden #performance-monitor { display:none; }
+body[data-view].hud-hidden { cursor:auto; }
+.frame-heading { display:flex; align-items:center; gap:16px; }
+#frame-label { flex:1; color:#e8dfef; font-size:13px; text-align:center; }
+#frame-strip { display:flex; gap:7px; overflow:auto; padding:12px 0 2px; scrollbar-width:thin; scrollbar-color:#796589 transparent; }
+#controls [data-frame] { flex:0 0 auto; min-height:34px; font-size:11px; border-color:#a28faf35; padding:0 12px; }
+#controls [data-frame][aria-pressed=true] { border-color:#d9bbfa; color:#f5ebff; background:#604b786e; }
+#controls button:disabled { opacity:.28; cursor:default; }
+#controls button:focus-visible, #restore-controls:focus-visible, #scene-entry a:focus-visible { outline:2px solid #eddaff; outline-offset:3px; }
+#restore-controls { position:fixed; z-index:18; right:max(16px,env(safe-area-inset-right)); bottom:max(16px,env(safe-area-inset-bottom)); width:36px; height:36px; padding:0; border:1px solid #cebbdf35; border-radius:50%; background:#100c1870; color:#e8dfefa6; cursor:pointer; opacity:.45; }
+#restore-controls:hover, #restore-controls:focus-visible { opacity:1; }
+#restore-controls[hidden] { display:none; }
+#scene-entry { position:fixed; z-index:18; right:max(24px,env(safe-area-inset-right)); bottom:max(24px,env(safe-area-inset-bottom)); display:flex; gap:8px; }
+#scene-entry a { padding:12px 22px; border:1px solid #c9b3e055; border-radius:24px; background:#0b0714cb; color:#e3d8ed; text-decoration:none; backdrop-filter:blur(12px); font-size:14px; }
+#scene-entry a:first-child { background:#e0cfed; color:#21172c; }
+@media(max-width:720px) {
+  #film-controls { grid-template-columns:36px 1fr auto; }
+  body[data-view] #controls { inset-inline:12px; bottom:max(12px,env(safe-area-inset-bottom)); padding:12px; border-radius:15px; }
+  #viewer-modes { gap:8px; }
+  .frame-life { gap:6px; }
+  #viewer-status { max-width:74px; text-align:right; font-size:8px; letter-spacing:.06em; }
+  #controls .view-switch button { min-width:72px; min-height:36px; }
+  #frame-label { font-size:11px; }
+  .frame-heading { gap:8px; }
+}
+@media(prefers-reduced-motion:reduce) { #controls { transition:none; } }

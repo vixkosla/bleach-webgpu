@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { Fn, mix, texture3D, uniform, vec3 } from 'three/tsl';
+import { Fn, mix, texture3D, uniform, vec2, vec3 } from 'three/tsl';
 import type { UpperEventLayout } from './upperEvent';
 
 /** Shared lower edge of the distant storm. The city mist occupies its own
@@ -15,6 +15,7 @@ export const createUpperWeatherCeiling = (
     cloudFade: uniform(165),
     cloudRelief: uniform(100),
     distantLight: uniform(0.65),
+    distantMist: uniform(0),
   };
   const coverage = Fn(([point]: [THREE.Node<'vec3'>]) => {
     // Broad horizontal folds, shared by the background and actual volume.
@@ -49,7 +50,13 @@ export const createUpperWeatherCeiling = (
       .mul(field.smoothstep(0.44, 0.64)).mul(0.40);
     const envelope = point.y.sub(layout.crown.y - 90).div(135)
       .pow(2).mul(-0.5).exp().mul(point.y.smoothstep(100, 175));
-    return mantle.add(litOpening).add(rim).mul(envelope).mul(controls.distantLight);
+    // One far field carries both its bright seams and dilute layered air.
+    // Reuse the same samples: the mist must have coherent horizontal folds,
+    // rather than becoming a screen-wide lift that removes the night gap.
+    const light = mantle.add(litOpening).add(rim).mul(envelope).mul(controls.distantLight);
+    const mist = field.smoothstep(.32, .64).mul(.7).add(folds.smoothstep(.45, .7).mul(.3))
+      .mul(envelope).mul(controls.distantMist);
+    return vec2(light, mist);
   });
   return { controls, coverage, distant };
 };

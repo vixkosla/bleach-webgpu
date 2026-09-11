@@ -22,6 +22,11 @@ import { vignette } from 'three/addons/tsl/display/CRT.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import './style.css';
 import { CinematicDirector } from './cinematic/CinematicDirector';
+import { SceneTourDirector, SCENE_TOUR_DURATION, SCENE_TOUR_FRAMES } from './cinematic/SceneTourDirector';
+import { FrameTransition } from './cinematic/FrameTransition';
+import { createFrameTravelBlur } from './materials/frameTravelBlur';
+import { createSceneNavigation, type SceneViewMode } from './ui/sceneNavigation';
+import { SceneAtmosphereDirector } from './cinematic/SceneAtmosphereDirector';
 import { createInspectionNavigation } from './cinematic/inspectionNavigation';
 import { createUpperInspectionPreset, UPPER_SHOT_PRESETS, type UpperShotSettings } from './cinematic/upperInspection';
 import { createTitleDirector } from './cinematic/TitleDirector';
@@ -91,7 +96,7 @@ if (
   throw new Error('Cinematic DOM is incomplete');
 }
 
-const formatTime = (seconds: number): string => `00:${Math.floor(seconds).toString().padStart(2, '0')} / 00:26`;
+const formatTime = (seconds: number, duration = FILM_DURATION): string => `00:${Math.floor(seconds).toString().padStart(2, '0')} / 00:${duration}`;
 
 const formatCompactCount = (value: number): string => {
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(value >= 10_000_000 ? 0 : 1)}M`;
@@ -217,6 +222,14 @@ const init = async (): Promise<void> => {
   }
 
   const url = new URL(window.location.href);
+  const tourMode = url.searchParams.get('film') === 'tour';
+  const filmDuration = tourMode ? SCENE_TOUR_DURATION : FILM_DURATION;
+  timeline.max = String(filmDuration);
+  if (tourMode) {
+    intro.style.display = 'none'; captions.style.display = 'none';
+    document.body.dataset.view = url.searchParams.get('view') === 'frames' ? 'frames' : 'cinema';
+    if (url.searchParams.get('debug') !== '1') performanceMonitor.style.display = 'none';
+  }
   const requestedInspectionPreset = url.searchParams.get('inspect');
   const upperRequested = requestedInspectionPreset === 'upper';
   // The AO architecture route is the accepted look for the city and citadel:
@@ -227,9 +240,9 @@ const init = async (): Promise<void> => {
   document.body.classList.toggle('landing-mode', landingMode);
   canvas.tabIndex = landingMode ? -1 : 0;
   if (landingMode) canvas.setAttribute('aria-label', 'Цитадель и чёрная луна среди движущихся облаков');
-  const explore = document.querySelector<HTMLElement>('#explore-scene');
+  const explore = document.querySelector<HTMLElement>('#scene-entry');
   if (explore) explore.hidden = !landingMode;
-  const aoOnly = upperRequested || (filmParams
+  const aoOnly = tourMode || upperRequested || (filmParams
     ? url.searchParams.has('ao-only')
     : url.searchParams.get('ao-only') !== '0');
   let skyVisible = url.searchParams.get('sky') !== '0';
@@ -253,7 +266,7 @@ const init = async (): Promise<void> => {
 
   // AO is one shared world: looking upward from any inspector must reveal
   // the event. GETSUGA is a camera preset, not a separate scene/load gate.
-  const sharedSky = aoOnly && inspectionPreset !== null;
+  const sharedSky = aoOnly && (inspectionPreset !== null || tourMode);
   const renderer = new WebGPUOnlyRenderer({
     canvas,
     antialias: true,
@@ -306,9 +319,9 @@ const init = async (): Promise<void> => {
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x090611);
-  scene.fog = new THREE.FogExp2(0x16122e, 0.0015);
+  scene.fog = tourMode ? null : new THREE.FogExp2(0x16122e, 0.0015);
 
-  const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.12, 2200);
+  const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.12, sharedSky ? 4200 : 2200);
   const upperShot: UpperShotSettings = { ...UPPER_SHOT_PRESETS.final };
   for (const [key, param, min, max] of [
     ['fov', 'ufov', 30, 95], ['distance', 'udist', 220, 2200],
@@ -398,7 +411,7 @@ const init = async (): Promise<void> => {
   scene.add(frontFill.target);
 
   // A trace of neutral fill retains stone detail without flattening the night key.
-  const inspectionFill = new THREE.AmbientLight(0xa6a2b2, inspectionPreset ? 0.08 : 0);
+  const inspectionFill = new THREE.AmbientLight(0xa6a2b2, inspectionPreset || tourMode ? 0.08 : 0);
   scene.add(inspectionFill);
 
   const towerBacklight = new THREE.PointLight(0x7854b0, 18, 220, 1.85);
@@ -451,6 +464,7 @@ const init = async (): Promise<void> => {
     if (upperMatterToggle) upperMatterToggle.checked = stage.matter.controls.strength.value > 0;
     return stage;
   })() : null;
+  const tour = tourMode && upperEvent ? new SceneTourDirector(camera, upperEvent.layout) : null;
   const getsuga = createGetsuga();
   scene.add(getsuga.group);
   const wordmark = createTitleWordmark();
@@ -562,6 +576,23 @@ const init = async (): Promise<void> => {
     cityHaze?.layer,
   ) : null;
   if (upperComposite) inspectionRenderPipeline.outputNode = upperComposite.output;
+  const storyAtmosphere = tour && upperEvent
+    ? new SceneAtmosphereDirector(upperEvent, architectureGrade, cityHaze) : null;
+
+  const frameTransition = new FrameTransition();
+  let viewMode: SceneViewMode = url.searchParams.get('view') === 'frames' ? 'frames' : 'cinema';
+  let selectedFrame = -1;
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  let frameMotion = !reducedMotion.matches && url.searchParams.get('motion') !== '0';
+  let frameLifeTime = 0;
+  const travelBlur = tour ? createFrameTravelBlur(inspectionRenderPipeline.outputNode as THREE.Node<'vec4'>) : null;
+  if (travelBlur) inspectionRenderPipeline.outputNode = travelBlur.output;
+  const travelPreviewCamera = camera.clone();
+  const travelPreview = tour && upperEvent ? new SceneTourDirector(travelPreviewCamera, upperEvent.layout) : null;
+  const travelAim = new THREE.Vector3();
+  const travelFocus = new THREE.Vector2(.5, .5);
+  const previousViewPoint = new THREE.Vector3();
+  const smearDirection = new THREE.Vector2();
 
   const filmRenderPipeline = new THREE.RenderPipeline(renderer);
   const scenePass = toonOutlinePass(
@@ -612,6 +643,10 @@ const init = async (): Promise<void> => {
       scene,
       camera,
       orbitControls,
+      tour,
+      storyAtmosphere,
+      frameTransition, travelBlur,
+      viewer: { get mode() { return viewMode; }, get selectedFrame() { return selectedFrame; }, get live() { return frameMotion; }, get lifeTime() { return frameLifeTime; } },
       wordmark,
       upperEvent,
       upperComposite,
@@ -642,13 +677,17 @@ const init = async (): Promise<void> => {
   let currentTime = inspectionPreset
     ? INSPECTION_PRESETS[inspectionPreset].time
     : Number.isFinite(exactTime) && exactTime >= 0
-      ? Math.min(FILM_DURATION, exactTime)
+      ? Math.min(filmDuration, exactTime)
       : 0;
-  let playing = !inspectionPreset
+  let playing = !inspectionPreset && (!tourMode || viewMode === 'cinema')
     && !url.searchParams.has('paused')
     && !url.searchParams.has('t')
-    && !url.searchParams.has('ft');
+    && !url.searchParams.has('ft')
+    && !(tourMode && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   let previousNow = performance.now();
+  // A suspended tab resumes from the same story beat. Its first new frame
+  // must not turn the background interval into a camera/weather jump.
+  document.addEventListener('visibilitychange', () => { previousNow = performance.now(); });
   let uiIdleTimer = 0;
   let performanceWindowStart = previousNow;
   let performanceFrameCount = 0;
@@ -700,6 +739,9 @@ const init = async (): Promise<void> => {
   };
 
   const setPlaying = (value: boolean): void => {
+    frameTransition.cancel();
+    if (value && tourMode) { viewMode = 'cinema'; selectedFrame = -1; }
+    if (value && tourMode && currentTime >= filmDuration) currentTime = 0;
     playing = value;
     playButton.textContent = playing ? 'Ⅱ' : '▶';
     playButton.setAttribute('aria-label', playing ? 'Pause' : 'Play');
@@ -726,6 +768,8 @@ const init = async (): Promise<void> => {
     setPlaying(false);
     document.body.classList.add('inspection-mode');
     document.body.classList.remove('hud-hidden');
+    controls.inert = false; controls.removeAttribute('aria-hidden');
+    document.querySelector<HTMLButtonElement>('#restore-controls')!.hidden = true;
     inspection.hidden = landingMode;
     scene.fog = null;
     inspectionFill.intensity = 0.08;
@@ -754,10 +798,11 @@ const init = async (): Promise<void> => {
     window.history.replaceState(null, '', url);
   };
 
-  // AO is the current workspace, not a temporary stop in a film review.
-  // Esc/0 (including Esc sent to a browser popup) must never launch the film.
-  filmModeButton.hidden = aoOnly;
-  filmModeButton.disabled = aoOnly;
+  // Start the tour only from the explicit button. Esc/0 keeps its existing
+  // inspector behaviour and must not navigate an AO review into the film.
+  filmModeButton.hidden = false;
+  filmModeButton.disabled = false;
+  filmModeButton.textContent = 'Смотреть проходку';
   const leaveInspection = (): void => {
     if (aoOnly) return;
     window.location.href = `${window.location.pathname}?film`;
@@ -810,10 +855,18 @@ const init = async (): Promise<void> => {
   });
   syncUpperCameraUi();
 
+  const restoreControls = document.querySelector<HTMLButtonElement>('#restore-controls')!;
+  const hidePanel = document.querySelector<HTMLButtonElement>('#hide-panel')!;
   const setHud = (visible: boolean): void => {
+    if (visible) uiIdleTimer = 0;
     document.body.classList.toggle('hud-hidden', !visible);
     controls.classList.toggle('is-hidden', !visible);
+    controls.inert = !visible;
+    controls.setAttribute('aria-hidden', String(!visible));
+    restoreControls.hidden = visible || !tourMode || !!inspectionPreset;
   };
+  hidePanel.addEventListener('click', () => { setHud(false); restoreControls.focus({ preventScroll: true }); });
+  restoreControls.addEventListener('click', () => { setHud(true); hidePanel.focus({ preventScroll: true }); });
   if (url.searchParams.get('hud') === '0') setHud(false);
 
   playButton.addEventListener('click', () => {
@@ -821,11 +874,56 @@ const init = async (): Promise<void> => {
   });
   timeline.addEventListener('input', () => {
     currentTime = Number(timeline.value);
+    selectedFrame = -1;
     setPlaying(false);
+  });
+  const chooseFrame = (index: number): void => {
+    if (!tour || inspectionPreset) return;
+    const frame = SCENE_TOUR_FRAMES[Math.max(0, Math.min(SCENE_TOUR_FRAMES.length - 1, index))]!;
+    const incomingSmear = frameTransition.amount;
+    const incomingPush = frameTransition.push;
+    setPlaying(false); viewMode = 'frames'; selectedFrame = SCENE_TOUR_FRAMES.indexOf(frame);
+    frameTransition.start(currentTime, frame.time, reducedMotion.matches, incomingSmear, incomingPush);
+    if (!frameTransition.active) currentTime = frameTransition.time;
+    if (!document.body.classList.contains('hud-hidden')) setHud(true);
+    url.searchParams.set('view', 'frames'); url.searchParams.set('t', String(frame.time));
+    url.searchParams.set('paused', ''); window.history.replaceState(null, '', url);
+  };
+  const stepFrame = (direction: number): void => {
+    let index = selectedFrame;
+    if (index < 0) {
+      index = direction > 0
+        ? SCENE_TOUR_FRAMES.findIndex(frame => frame.time > currentTime + .05) - 1
+        : SCENE_TOUR_FRAMES.findLastIndex(frame => frame.time < currentTime - .05) + 1;
+      if (direction > 0 && index === -2) index = SCENE_TOUR_FRAMES.length - 1;
+    }
+    chooseFrame(index + direction);
+  };
+  const navigation = tour ? createSceneNavigation(SCENE_TOUR_FRAMES, {
+    mode: mode => {
+      if (inspectionPreset) return;
+      viewMode = mode; selectedFrame = -1;
+      setPlaying(mode === 'cinema'); setHud(true);
+      url.searchParams.delete('t'); url.searchParams.delete('ft');
+      if (mode === 'frames') { url.searchParams.set('view', 'frames'); url.searchParams.set('paused', ''); }
+      else { url.searchParams.delete('view'); url.searchParams.delete('paused'); }
+      window.history.replaceState(null, '', url);
+    },
+    frame: chooseFrame, step: stepFrame,
+    motion: () => {
+      frameMotion = !frameMotion;
+      url.searchParams.set('motion', frameMotion ? '1' : '0');
+      window.history.replaceState(null, '', url);
+    },
+  }) : null;
+  reducedMotion.addEventListener('change', () => {
+    if (reducedMotion.matches) { frameMotion = false; setPlaying(false); if (travelBlur) travelBlur.amount.value = 0; }
   });
   hudButton.addEventListener('click', () => setHud(false));
   inspectButton.addEventListener('click', () => activateInspectionPreset('street'));
-  filmModeButton.addEventListener('click', leaveInspection);
+  filmModeButton.addEventListener('click', () => {
+    window.location.href = `${window.location.pathname}?film=tour`;
+  });
   for (const button of inspectionCameraButtons) {
     button.addEventListener('click', () => {
       const name = button.dataset.inspectCamera ?? null;
@@ -885,13 +983,24 @@ const init = async (): Promise<void> => {
   canvas.addEventListener('pointerdown', () => {
     if (landingMode) return;
     if (inspectionPreset) { canvas.focus({ preventScroll: true }); return; }
+    if (tourMode && viewMode === 'frames') { setHud(true); return; }
     const hidden = document.body.classList.contains('hud-hidden');
     if (hidden) setHud(true);
     else setPlaying(!playing);
   });
   window.addEventListener('keydown', (event) => {
     if (landingMode) return;
-    if (event.target instanceof HTMLInputElement) return;
+    const editing = event.target instanceof HTMLElement && event.target.closest('input, textarea, select, [contenteditable]');
+    if (!inspectionPreset && !editing && (event.code === 'KeyH' || event.key.toLowerCase() === 'h')) {
+      event.preventDefault();
+      const show = document.body.classList.contains('hud-hidden'); setHud(show);
+      if (tourMode) (show ? hidePanel : restoreControls).focus({ preventScroll: true });
+      return;
+    }
+    if (!inspectionPreset && !editing && tourMode && viewMode === 'frames' && (event.key === 'ArrowRight' || event.key === 'ArrowLeft')) {
+      event.preventDefault(); stepFrame(event.key === 'ArrowRight' ? 1 : -1); return;
+    }
+    if (event.target instanceof HTMLElement && event.target.closest('button, a, input, textarea, select')) return;
     if (inspectionPreset && ['1', '2', '3', '4', '5'].includes(event.key)) {
       const names: InspectionPresetName[] = ['street', 'quarter', 'city', 'citadel', 'upper'];
       const name = names[Number(event.key) - 1];
@@ -909,14 +1018,11 @@ const init = async (): Promise<void> => {
       event.preventDefault();
       setPlaying(!playing);
     }
-    if (event.key.toLowerCase() === 'h') {
-      if (inspectionPreset) return;
-      setHud(document.body.classList.contains('hud-hidden'));
-    }
     if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
       if (inspectionPreset) return;
       const direction = event.key === 'ArrowRight' ? 1 : -1;
-      currentTime = Math.max(0, Math.min(FILM_DURATION, currentTime + direction * 0.1));
+      if (tourMode && viewMode === 'frames') { event.preventDefault(); stepFrame(direction); return; }
+      currentTime = Math.max(0, Math.min(filmDuration, currentTime + direction * 0.1));
       setPlaying(false);
     }
   });
@@ -938,6 +1044,24 @@ const init = async (): Promise<void> => {
   };
   window.addEventListener('resize', resize);
 
+  if (tour && storyAtmosphere && !inspectionPreset) {
+    await showLoading('Готовим движение…');
+    // Compile/upload both the night and illuminated passes under the loading
+    // screen. A first visible event must not pay for the hidden lunar volume,
+    // and the first street frames must not race outstanding GPU uploads.
+    getsuga.group.visible = wordmark.group.visible = lightning.group.visible = embers.group.visible = false;
+    for (const time of [19.8, currentTime, currentTime]) {
+      tour.update(time);
+      storyAtmosphere.update(tour.state);
+      inspectionRenderPipeline.render();
+      const backend = renderer.backend;
+      if ('device' in backend && backend.device instanceof GPUDevice) {
+        await backend.device.queue.onSubmittedWorkDone();
+      }
+      if (deviceStatus.failed) return;
+    }
+  }
+
   await showLoading('Настраиваем свет…');
   if (deviceStatus.failed) return;
   previousNow = performance.now();
@@ -949,15 +1073,60 @@ const init = async (): Promise<void> => {
     // edit locked to wall time while still rejecting very long background-tab jumps.
     const delta = Math.min(1, Math.max(0, (wallNow - previousNow) / 1000));
     previousNow = wallNow;
-    if (playing && !inspectionPreset) {
+    if (!firstFrame && tour && !inspectionPreset && viewMode === 'frames' && frameMotion && document.visibilityState === 'visible') {
+      frameLifeTime += Math.min(.1, delta);
+    }
+    if (!firstFrame && frameTransition.active && !inspectionPreset && document.visibilityState === 'visible') {
+      currentTime = frameTransition.update(delta);
+    }
+    if (!firstFrame && playing && !inspectionPreset && (!tourMode || document.visibilityState === 'visible')) {
       currentTime += delta;
-      if (currentTime > FILM_DURATION) currentTime %= FILM_DURATION;
+      if (currentTime >= filmDuration) {
+        if (tourMode) { currentTime = filmDuration; setPlaying(false); if (!document.body.classList.contains('hud-hidden')) setHud(true); }
+        else currentTime %= filmDuration;
+      }
     }
 
+    // Undo only the temporary frame-travel crop before sampling any camera.
+    if (camera.view?.enabled) camera.clearViewOffset();
     if (inspectionPreset) {
+      if (travelBlur) travelBlur.amount.value = 0;
       currentTime = inspectionPreset === 'upper' ? upperTime : INSPECTION_PRESETS[inspectionPreset].time;
       orbitControls.update();
       inspectionNavigation.update(delta);
+    } else if (tour) {
+      previousViewPoint.set(0, 0, -400).applyMatrix4(camera.matrixWorld);
+      tour.update(currentTime);
+      if (travelBlur) {
+        const amount = reducedMotion.matches ? 0 : frameTransition.amount;
+        travelBlur.amount.value = amount;
+        if (amount > 0) {
+          const follow = 1 - Math.exp(-delta * 8);
+          if (travelPreview) {
+            travelPreviewCamera.aspect = camera.aspect;
+            travelPreview.update(frameTransition.lookAheadTime);
+            travelAim.copy(travelPreviewCamera.position).sub(camera.position).transformDirection(camera.matrixWorldInverse);
+            // A bounded vanishing point leads the turn, including reverse travel.
+            // Positive depth avoids a projected point flipping behind the lens.
+            const depth = Math.max(.4, -travelAim.z);
+            const tangent = Math.tan(THREE.MathUtils.degToRad(camera.fov) * .5);
+            travelFocus.set(.5 + travelAim.x / (2 * tangent * camera.aspect * depth),
+              .5 - travelAim.y / (2 * tangent * depth)).clampScalar(.26, .74);
+            travelBlur.focus.value.lerp(travelFocus, follow);
+          }
+          previousViewPoint.project(camera);
+          const shutter = .3 / (60 * Math.max(.008, delta));
+          smearDirection.set(previousViewPoint.x * shutter, -previousViewPoint.y * shutter).clampScalar(-.12, .12);
+          travelBlur.direction.value.lerp(smearDirection, follow);
+          // Off-axis lens push into the next direction; never widen the lens.
+          // World-space position stays on the collision-checked flight.
+          const zoom = 1 + frameTransition.push * .46, crop = 1 - 1 / zoom;
+          camera.setViewOffset(camera.aspect, 1, travelBlur.focus.value.x * camera.aspect * crop,
+            travelBlur.focus.value.y * crop, camera.aspect / zoom, 1 / zoom);
+        } else {
+          travelBlur.direction.value.set(0, 0); travelBlur.focus.value.set(.5, .5);
+        }
+      }
     } else {
       director.update(currentTime);
     }
@@ -968,7 +1137,12 @@ const init = async (): Promise<void> => {
       if (inspectionPreset && skyVisible && upperMotionPlaying && document.visibilityState === 'visible') {
         upperMotionTime += delta;
       }
-      upperEvent.update(inspectionPreset && skyVisible ? upperTime : 0, upperMotionTime);
+      if (tour && !inspectionPreset && storyAtmosphere) {
+        storyAtmosphere.update(tour.state, frameLifeTime);
+      } else {
+        storyAtmosphere?.restore();
+        upperEvent.update(inspectionPreset && skyVisible ? upperTime : 0, upperMotionTime);
+      }
       // Old film FX belong to a different lighting/timing prototype. Do not
       // double-render them or let them pollute the AO masks during this study.
       getsuga.group.visible = wordmark.group.visible = lightning.group.visible = embers.group.visible = false;
@@ -985,11 +1159,11 @@ const init = async (): Promise<void> => {
       embers.update(currentTime);
     }
 
-    const impactFlash = inspectionPreset ? 0 : pulse(BEATS.impact + 0.12, 0.58, currentTime);
-    const whiteout = inspectionPreset ? 0 : pulse(BEATS.impact + 0.55, 1.2, currentTime);
+    const impactFlash = inspectionPreset || tour ? 0 : pulse(BEATS.impact + 0.12, 0.58, currentTime);
+    const whiteout = inspectionPreset || tour ? 0 : pulse(BEATS.impact + 0.55, 1.2, currentTime);
     flash.style.opacity = Math.min(0.96, impactFlash * 0.84 + whiteout * 0.24).toFixed(3);
     const aftermath = smoothstep(BEATS.moonBirth, BEATS.scaleReveal, currentTime);
-    renderer.toneMappingExposure = inspectionPreset
+    renderer.toneMappingExposure = inspectionPreset || tour
       ? aoOnly ? 1 : 0.9
       : 0.94 + impactFlash * 0.94 + aftermath * 0.03;
     bloomPass.strength.value = 0.62 + impactFlash * 0.36 + aftermath * 0.06;
@@ -1004,15 +1178,16 @@ const init = async (): Promise<void> => {
       bokehScale.value = director.bokehScale;
     }
 
-    titleDirector.update(currentTime);
+    if (!tourMode) titleDirector.update(currentTime);
     timeline.value = currentTime.toFixed(3);
-    timeOutput.value = formatTime(currentTime);
+    timeOutput.value = formatTime(currentTime, filmDuration);
 
     uiIdleTimer += delta;
-    if (playing && !inspectionPreset && uiIdleTimer > 4 && url.searchParams.get('hud') !== '1') setHud(false);
+    navigation?.update(viewMode, currentTime, selectedFrame, frameTransition.active, frameMotion);
+    if (!tourMode && playing && !inspectionPreset && uiIdleTimer > 4 && url.searchParams.get('hud') !== '1') setHud(false);
 
     try {
-      if (inspectionPreset) inspectionRenderPipeline.render();
+      if (inspectionPreset || tour) inspectionRenderPipeline.render();
       else filmRenderPipeline.render();
     } catch (error) {
       console.error('WebGPU frame failed', error);
@@ -1023,6 +1198,7 @@ const init = async (): Promise<void> => {
     if (deviceStatus.failed) return;
     if (firstFrame) {
       firstFrame = false;
+      previousNow = performance.now();
       loading.hidden = true;
       performance.mark('scene-ready');
       performance.measure('scene-startup', 'scene-start', 'scene-ready');

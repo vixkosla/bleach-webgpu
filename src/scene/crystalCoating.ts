@@ -34,6 +34,17 @@ export interface CoatingAssemblyOptions {
   verticalBias?: number;
 }
 
+export interface CrystalGrowthSurface {
+  origin: THREE.Vector3;
+  u: THREE.Vector3;
+  v: THREE.Vector3;
+  normal: THREE.Vector3;
+  polygon: THREE.Vector2[];
+  seed: number;
+  scale: number;
+  veins: { from: THREE.Vector2; to: THREE.Vector2; startWidth: number; group: number }[];
+}
+
 /** Planar boundary of a union of axis-aligned masonry volumes. Grid lines are
  * used only for exact boolean clipping: they never become growth origins. */
 export const extractExposedBoxFaces = (boxes: readonly CoatingBox[]): ExposedSurface[] => {
@@ -146,9 +157,9 @@ const random = (seed: number): number => THREE.MathUtils.euclideanModulo(
 // blue, cyan, mint or warm facets.
 // (Hex values are sRGB; THREE.Color converts them to linear, which is what
 // the vertex attribute and the audits measure.)
-const spectral = [0x8a3fd0, 0x9b3fbe, 0xb04fd8, 0x6c2f9e, 0xc45ad9, 0xd066d0, 0x7d38c4]
+const spectral = [0x7949ba, 0x8c55c2, 0xa36acb, 0x643a99, 0x9a61c5, 0xb58ad8, 0x7141ac]
   .map(value => new THREE.Color(value));
-const white = new THREE.Color(0xf0d9f3);
+const white = new THREE.Color(0xe7dff3);
 const pointKey = (p: THREE.Vector3): string => [p.x, p.y, p.z]
   .map(value => Math.round(value * 1000)).join(',');
 const cross2 = (a: THREE.Vector2, b: THREE.Vector2, c: THREE.Vector2): number =>
@@ -180,7 +191,11 @@ export class CrystalCoatingBuilder {
   private assemblyArea = 0;
   private readonly assemblyNuclei: number[][] = [];
 
-  constructor(private readonly kind: FrostKind = 'city', private readonly recordLayout = false) {}
+  constructor(
+    private readonly kind: FrostKind = 'city',
+    private readonly recordLayout = false,
+    private readonly onGrowthSurface?: (surface: CrystalGrowthSurface) => void,
+  ) {}
 
   private triangle(
     a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3,
@@ -349,29 +364,29 @@ export class CrystalCoatingBuilder {
         * (0.8 + random(seed + 101) * 0.2) * grown;
       deposit(nucleus, nucleus.clone().addScaledVector(along, rimLength), scale * 0.07, scale * 0.07, 0);
       // Icicles: narrow, tapering, denser and longer near the corner.
-      const drips = 6 + Math.floor(random(seed + 211) * 4);
+      const drips = 7 + Math.floor(random(seed + 211) * 5);
       const dripWidth = rimLength / (drips + 0.3) * 0.42;
       for (let i = 0; i < drips; i += 1) {
         const s = seed + 613 + i * 67;
-        const station = ((i + 0.35 + random(s + 3) * 0.3) / drips) ** 1.25;
+        const station = ((i + 0.12 + random(s + 3) * 0.76) / drips) ** 1.25;
         const root = nucleus.clone().addScaledVector(along, rimLength * station);
-        const direction = lean(Math.PI / 2 - random(s + 29) * 0.28);
+        const direction = lean(Math.PI / 2 - random(s + 29) * 0.62);
         const length = Math.min(reach(root, direction),
-          scale * (0.2 + random(s + 31) * 0.5) * (1.2 - station * 0.55) * grown);
+          scale * (0.12 + random(s + 31) * 0.32) * (1.2 - station * 0.55) * grown);
         if (length < scale * 0.05) continue;
-        const width = dripWidth * (0.8 + random(s + 37) * 0.4);
+        const width = dripWidth * (0.85 + random(s + 37) * 1.1);
         deposit(root, root.clone().addScaledVector(direction, length), width, width * 0.55, 1);
       }
       this.groupCount += 1;
       // Veil: two or three broad diagonal blades from the first third of the rim.
-      const veils = 2 + Math.floor(random(seed + 307) * 2);
+      const veils = 3 + Math.floor(random(seed + 307) * 3);
       const veilWidth = rimLength / 7 * 0.9;
       for (let i = 0; i < veils; i += 1) {
         const s = seed + 911 + i * 67;
         const station = (i + 0.4) / veils * 0.4;
         const root = nucleus.clone().addScaledVector(along, rimLength * station);
         const direction = lean(0.62 + random(s + 29) * 0.5);
-        const length = Math.min(reach(root, direction), scale * (0.7 + random(s + 31) * 0.5) * (1 - station) * grown);
+        const length = Math.min(reach(root, direction), scale * (0.3 + random(s + 31) * 0.38) * (1 - station) * grown);
         if (length < scale * 0.05) continue;
         deposit(root, root.clone().addScaledVector(direction, length), veilWidth, veilWidth, 2);
       }
@@ -379,11 +394,11 @@ export class CrystalCoatingBuilder {
     }
     const stemLength = Math.min(reach(nucleus, stemAxis) * 0.58, scale * 0.82)
       * (0.88 + random(seed + 101) * 0.12) * grown;
-    const count = colony?.verticalBias && !roof ? 9 : citadel ? 7 : roof ? 6 : 5;
+    const count = citadel ? 7 : roof ? 6 : 5;
     // The stem is part of the same height field, so every blade has a root
     // in existing ice. Nothing nucleates at a random point inside the face.
     if (!eaveAxes) deposit(nucleus, nucleus.clone().addScaledVector(stemAxis, stemLength),
-      scale * 0.095, scale * 0.095, 0);
+      scale * 0.14, scale * 0.11, 0);
     for (let group = 0; group < (eaveAxes ? 0 : axes.length); group += 1) {
       const axis = axes[group]!;
       const side = new THREE.Vector2(-axis.y, axis.x);
@@ -391,22 +406,21 @@ export class CrystalCoatingBuilder {
       const bladeWidth = transverseSpan / (count + 0.3) / 0.70;
       for (let member = 0; member < count; member += 1) {
         const bladeSeed = seed + group * 419 + member * 67;
-        const station = (member + 0.45) / (count + 0.15);
+        const station = (member + 0.15 + random(bladeSeed + 7) * .7) / (count + 0.15);
         const root = nucleus.clone().addScaledVector(stemAxis, stemLength * station);
         // Both families live in the same <=90 degree sector. Small inward
         // cant preserves natural variation without breaking their edge axes.
-        const cant = random(bladeSeed + 29) * 0.035;
+        const cant = .08 + random(bladeSeed + 29) * .42;
         const direction = axis.clone().lerp(stemAxis, cant).normalize();
         const available = reach(root, direction);
-        const familyReach = domain || colony ? 0.72 + random(seed + group * 419 + 137) * 0.28 : 1;
-        const vertical = Math.abs(u.y * axis.x + v.y * axis.y);
-        const edgeReach = colony?.verticalBias && !roof ? 0.48 + vertical * 0.72 : 1;
-        const length = Math.min(available, colony ? Math.min(66, scale * 1.65 * familyReach * edgeReach) : domain ? scale * 1.65 * familyReach : Infinity)
-          * (0.73 + random(bladeSeed + 31) * 0.22);
+        // Interlocking short facets form a coarse mineral crust. Unequal
+        // reach and broader angular directions remove the old regular comb.
+        const length = Math.min(available, (colony ? Math.min(32, scale) : scale)
+          * (.28 + random(bladeSeed + 31) * .58)) * grown;
         if (length < scale * 0.05) continue;
         const tip = root.clone().addScaledVector(direction, length);
-        const width = bladeWidth * (0.94 + random(bladeSeed + 37) * 0.12);
-        deposit(root, tip, width / 0.92, width / 0.92, group + 1);
+        const width = bladeWidth * (0.85 + random(bladeSeed + 37) * 1.1);
+        deposit(root, tip, width, width * (.5 + random(bladeSeed + 43) * .35), group + 1);
       }
       this.groupCount += 1;
     }
@@ -429,9 +443,12 @@ export class CrystalCoatingBuilder {
       veins: ranges.map(vein => ({ from: vein.from.toArray(), to: vein.to.toArray(),
         width: vein.startWidth, group: vein.group })),
     });
+    this.onGrowthSurface?.({ origin, u, v, normal, polygon, seed, scale, veins: ranges });
     const maxRelief = Math.min(scale * 0.033, citadel ? 1.1 : 0.52);
     const profileWidth = (vein: typeof ranges[number], t: number): number =>
-      vein.startWidth * 0.46 * (1 - THREE.MathUtils.smoothstep(t, 0.74, 1) * 0.98);
+      THREE.MathUtils.lerp(vein.startWidth, vein.endWidth, t) * .72
+        * (.8 + .2 * Math.cos(t * 17 + vein.phase * 9))
+        * (1 - THREE.MathUtils.smoothstep(t, .8, 1) * .98);
     const sampleField = (p: THREE.Vector2): { height: number; owner: number } => {
       let height = 0, owner = -1;
       for (let index = 0; index < ranges.length; index++) {
@@ -506,7 +523,7 @@ export class CrystalCoatingBuilder {
     // near-coincident samples at a tapered point only create tiny slivers.
     for (const vein of ranges) {
       const side = new THREE.Vector2(-vein.direction.y, vein.direction.x).normalize();
-      for (const t of [0, 0.30, 0.74, 0.9, 1]) {
+      for (const t of [0, 0.2, 0.46, 0.72, 0.88, 1]) {
         const ridge = vein.from.clone().addScaledVector(vein.direction, t);
         const radius = profileWidth(vein, t);
         // Shared feet touch; paired top samples retain a flattened central
@@ -572,13 +589,13 @@ export class CrystalCoatingBuilder {
       const facetNormal = p[1]!.clone().sub(p[0]!).cross(p[2]!.clone().sub(p[0]!)).normalize();
       if (facetNormal.dot(normal) < 0) facetNormal.negate();
       const facetLight = Math.max(0, facetNormal.dot(grazingLight));
-      const bevel = facetNormal.dot(normal) < 0.995;
+      const bevel = facetNormal.dot(normal) < 0.98;
       const side = new THREE.Vector2(-owner.direction.y, owner.direction.x).normalize();
       const sideNormal = u.clone().multiplyScalar(side.x).addScaledVector(v, side.y);
       const flankSeed = s + (facetNormal.dot(sideNormal) > 0 ? 19 : 47);
-      const colour = bevel && random(flankSeed) < 0.6
-        ? spectral[Math.floor(random(flankSeed + 23) * spectral.length)]!.clone().lerp(white, 0.18)
-        : white.clone();
+      const mineral = spectral[Math.floor(random(s + 23) * spectral.length)]!;
+      const colour = mineral.clone().lerp(white,
+        bevel ? .12 + random(flankSeed) * .22 : .8 + random(s + 11) * .2);
       // Pale tips and violet bevels. Palette follows the crystal/flank, not
       // each triangle. Absolute field height also prevents a colour seam where
       // two coplanar triangles have different local peaks. The body stays

@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#010207" />
     <link rel="icon" href="data:," />
     <title>Black Moon — Wahr Welt WebGPU Tribute</title>
-    <meta name="description" content="Интерактивный WebGPU tribute по мотивам BLEACH: город Wahr Welt, фиолетовая цитадель и чёрная луна среди живых облаков." />
+    <meta name="description" content="Интерактивный WebGPU tribute по мотивам BLEACH: парящий город, цитадель и чёрная луна. Непрерывное кино и живые кадры среди облаков." />
   </head>
   <body>
     <main id="app">
@@ -108,15 +108,39 @@
         <small id="perf-resolution" class="performance-resolution">RENDER —</small>
       </aside>
 
-      <a id="explore-scene" href="?inspect=upper" hidden>Осмотреть сцену <span aria-hidden="true">↗</span></a>
+      <nav id="scene-entry" aria-label="Просмотр сцены" hidden>
+        <a href="?film=tour">Кино <span aria-hidden="true">↗</span></a>
+        <a href="?film=tour&view=frames&paused">Кадры</a>
+      </nav>
 
-      <nav id="controls" aria-label="Cinematic controls">
+      <nav id="controls" aria-label="Управление сценой">
+        <div id="viewer-modes" hidden>
+          <div class="view-switch" role="group" aria-label="Режим просмотра">
+            <button id="mode-cinema" type="button" aria-pressed="true">Кино</button>
+            <button id="mode-frames" type="button" aria-pressed="false">Кадры</button>
+          </div>
+          <div class="frame-life"><span id="viewer-status">НЕПРЕРЫВНЫЙ ПРОЛЁТ</span>
+            <button id="frame-motion" type="button" aria-label="Остановить движение в кадре" aria-pressed="true" hidden>Ⅱ</button>
+            <button id="hide-panel" type="button" aria-label="Скрыть панель управления" title="Скрыть панель · H">⌄</button>
+          </div>
+        </div>
+        <div id="film-controls">
         <button id="play" type="button" aria-label="Pause">Ⅱ</button>
-        <input id="timeline" type="range" min="0" max="26" step="0.001" value="0" aria-label="Timeline" />
+        <input id="timeline" type="range" min="0" max="26" step="0.001" value="0" aria-label="Время фильма" />
         <output id="time">00:00 / 00:26</output>
         <button id="inspect-mode" type="button" aria-label="Inspect architecture">INSPECT</button>
         <button id="hud" type="button" aria-label="Hide controls">HIDE UI</button>
+        </div>
+        <div id="frame-controls" hidden>
+          <div class="frame-heading">
+            <button id="frame-previous" type="button" aria-label="Предыдущий кадр">←</button>
+            <output id="frame-label" aria-live="polite"></output>
+            <button id="frame-next" type="button" aria-label="Следующий кадр">→</button>
+          </div>
+          <div id="frame-strip" role="group" aria-label="Кадры фильма"></div>
+        </div>
       </nav>
+      <button id="restore-controls" type="button" aria-label="Показать панель управления" title="Показать управление · H" hidden>☰</button>
     </main>
     <script type="module" src="/src/main.ts"></script>
   </body>
