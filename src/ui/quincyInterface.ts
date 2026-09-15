@@ -14,18 +14,21 @@ export const strikeQuincyControl = (button: HTMLButtonElement | null): void => {
 /** Five main actions around the chapter dials; all camera handlers stay native. */
 export const createQuincyInterface = () => {
   document.body.classList.add('quincy-interface');
-  const decorate = (id: string, markup: string) => {
+  const decorate = (id: string, markup: string, key: string, shortcuts = key) => {
     const button = document.getElementById(id);
-    if (button) button.innerHTML = markup;
+    if (button) {
+      button.innerHTML = markup + `<kbd class="q-key" aria-hidden="true">${key}</kbd>`;
+      button.setAttribute('aria-keyshortcuts', shortcuts);
+    }
   };
   decorate('mode-cinema', inkIcon('cinema', 'q-mode-cinema') + inkIcon('frames', 'q-mode-frames')
-    + '<span class="q-button-label q-mode-cinema">Кино</span><span class="q-button-label q-mode-frames">Кадры</span>');
-  decorate('play', playbackInk() + '<span class="q-button-label">Пуск / пауза</span>');
-  decorate('frame-motion', playbackInk() + '<span class="q-button-label">Движение</span>');
-  decorate('frame-previous', inkIcon('arrow') + '<span class="q-button-label">Назад · ←</span>');
-  decorate('frame-next', inkIcon('arrow', 'q-reverse') + '<span class="q-button-label">Вперёд · →</span>');
-  decorate('hide-panel', inkIcon('hide') + '<span class="q-button-label">Скрыть · H</span>');
-  decorate('restore-controls', inkIcon('cross'));
+    + '<span class="q-button-label q-mode-cinema">Кино</span><span class="q-button-label q-mode-frames">Кадры</span>', 'V');
+  decorate('play', playbackInk() + '<span class="q-button-label">Пуск / пауза</span>', 'P', 'P Space');
+  decorate('frame-motion', playbackInk() + '<span class="q-button-label">Движение</span>', 'M');
+  decorate('frame-previous', inkIcon('arrow') + '<span class="q-button-label">Назад</span>', '←', 'ArrowLeft');
+  decorate('frame-next', inkIcon('arrow', 'q-reverse') + '<span class="q-button-label">Вперёд</span>', '→', 'ArrowRight');
+  decorate('hide-panel', inkIcon('hide') + '<span class="q-button-label">Скрыть</span>', 'H');
+  decorate('restore-controls', inkIcon('cross'), 'H');
 
   const held = new Set<HTMLButtonElement>();
   const release = (cancel = false) => {

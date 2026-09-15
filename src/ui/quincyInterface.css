@@ -1,9 +1,9 @@
-/* Desktop controls: five actions and an arc of circular chapter shortcuts.
- * Compact side clusters; chipped white ink and immediate press afterglow. */
+/* Centered controls: action clusters above the circular chapter shortcuts.
+ * Chipped white ink, keyboard hints and immediate press afterglow. */
 .q-sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
 .q-ink { display:block; width:40px; height:40px; flex-shrink:0; pointer-events:none; }
 .q-reverse { transform:scaleX(-1); }
-body.quincy-interface { --q-ink:#f4f2ed; --q-muted:#cacbc6; --q-shadow:0 1px 3px #000,0 0 12px #000c; --q-side:clamp(32px,3.4vw,88px); }
+body.quincy-interface { --q-ink:#f4f2ed; --q-muted:#cacbc6; --q-shadow:0 1px 3px #000,0 0 12px #000c; --q-side:max(32px,calc(50vw - 540px)); }
 body.quincy-interface #controls {
   position:fixed; inset:0; width:100%; max-width:none; height:100%; margin:0; padding:0;
   border:0; border-radius:0; background:none; box-shadow:none; backdrop-filter:none;
@@ -32,13 +32,13 @@ body.quincy-interface #controls button[aria-pressed=true] {
 body.quincy-interface #controls button:focus-visible, body.quincy-interface #restore-controls:focus-visible { outline:1px solid #fffef1; outline-offset:6px; }
 body.quincy-interface #controls button:disabled { opacity:.24; cursor:default; }
 .q-button-label { position:absolute; top:calc(100% + 9px); left:50%; transform:translateX(-50%); white-space:nowrap; font-size:11px; letter-spacing:.10em; color:inherit; }
+.q-key { position:absolute; top:-10px; left:50%; transform:translateX(-50%); min-width:17px; padding:1px 4px; border:1px solid #e1e3d77a; border-radius:3px; color:#f4f2ed; background:#100d18d9; font:11px/14px ui-monospace,monospace; text-align:center; pointer-events:none; }
 body.quincy-interface #controls .view-switch button { width:60px; height:60px; min-height:0; min-width:0; padding:0; }
-body.quincy-interface #controls #mode-cinema { right:calc(var(--q-side) + 45px); bottom:91px; --q-flash:181 117 255; }
-body.quincy-interface #controls #play, body.quincy-interface #controls #frame-motion { right:calc(var(--q-side) + 108px); bottom:101px; --q-flash:87 182 255; min-height:0; min-width:0; width:80px; height:80px; padding:0; }
-body.quincy-interface #controls #hide-panel { right:var(--q-side); bottom:122px; min-height:0; min-width:0; width:44px; height:44px; padding:0; }
+body.quincy-interface #controls #mode-cinema { right:calc(var(--q-side) + 45px); bottom:205px; --q-flash:181 117 255; }
+body.quincy-interface #controls #play, body.quincy-interface #controls #frame-motion { right:calc(var(--q-side) + 108px); bottom:215px; --q-flash:87 182 255; min-height:0; min-width:0; width:80px; height:80px; padding:0; }
+body.quincy-interface #controls #hide-panel { right:var(--q-side); bottom:236px; min-height:0; min-width:0; width:44px; height:44px; padding:0; }
 #frame-motion .q-ink, #play .q-ink { width:46px; height:48px; }
 #hide-panel .q-ink { width:28px; height:30px; }
-#hide-panel .q-button-label { top:auto; bottom:calc(100% + 8px); }
 #mode-cinema .q-ink { width:36px; height:38px; }
 body[data-view=cinema] .q-mode-frames, body[data-view=frames] .q-mode-cinema { display:none; }
 body.quincy-interface #viewer-status { position:absolute; left:50%; bottom:193px; transform:translateX(-50%); color:#b8bcb7; font:8px Georgia,serif; letter-spacing:.17em; max-width:none; text-align:center; }
@@ -58,8 +58,8 @@ body.quincy-interface #controls [data-frame][aria-pressed=true] { color:#fffef3;
 body.quincy-interface #controls [data-frame][aria-pressed=true]::after { content:''; position:absolute; bottom:-15px; left:calc(50% - 2px); width:4px; height:4px; background:currentColor; transform:rotate(45deg); box-shadow:var(--q-shadow); }
 body.quincy-interface #frame-label { position:absolute; top:auto; bottom:164px; left:50%; transform:translateX(-50%); color:#e9eae3; font-family:Georgia,serif; font-size:14px; letter-spacing:.08em; white-space:nowrap; }
 body.quincy-interface #controls #frame-previous, body.quincy-interface #controls #frame-next { width:58px; height:58px; }
-body.quincy-interface #frame-previous { left:var(--q-side); bottom:100px; }
-body.quincy-interface #frame-next { left:calc(var(--q-side) + 64px); bottom:88px; }
+body.quincy-interface #frame-previous { left:var(--q-side); bottom:225px; }
+body.quincy-interface #frame-next { left:calc(var(--q-side) + 64px); bottom:213px; }
 #frame-previous .q-ink, #frame-next .q-ink { width:36px; height:36px; }
 #frame-previous .q-button-label, #frame-next .q-button-label { font-size:10px; letter-spacing:.04em; }
 body.quincy-interface #timeline { position:absolute; left:50%; bottom:39px; transform:translateX(-50%); width:min(33vw,490px); height:44px; margin:0; padding:0; border:0; border-radius:0; background:none; appearance:none; -webkit-appearance:none; cursor:pointer; pointer-events:auto; filter:drop-shadow(0 1px 3px #000); }

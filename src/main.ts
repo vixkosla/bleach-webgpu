@@ -1057,6 +1057,7 @@ const init = async (): Promise<void> => {
   });
   window.addEventListener('keydown', (event) => {
     if (landingMode) return;
+    if (event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return;
     // Physical number keys also work on Russian layouts and the numeric keypad.
     // Preserve browser shortcuts, text entry and a held key's repeat behavior.
     const typing = event.target instanceof HTMLElement && event.target.closest('textarea, select, [contenteditable], input:not([type=range])');
@@ -1068,13 +1069,24 @@ const init = async (): Promise<void> => {
       return;
     }
     const editing = event.target instanceof HTMLElement && event.target.closest('input, textarea, select, [contenteditable]');
+    // Visible key badges invoke the same actions as clicks, including when a
+    // chapter button or timeline has focus. Physical codes support Russian input.
+    if (tourMode && !inspectionPreset && !typing && !event.shiftKey) {
+      const key = event.code || `Key${event.key.toUpperCase()}`;
+      const action = key === 'KeyV' ? document.querySelector<HTMLButtonElement>('#mode-cinema')
+        : key === 'KeyM' && viewMode === 'frames' ? document.querySelector<HTMLButtonElement>('#frame-motion')
+        : key === 'KeyP' && viewMode === 'cinema' ? playButton
+        : key === 'KeyH' ? (document.body.classList.contains('hud-hidden') ? restoreControls : hidePanel)
+        : null;
+      if (action) { event.preventDefault(); if (!event.repeat) action.click(); return; }
+    }
     if (!inspectionPreset && !editing && (event.code === 'KeyH' || event.key.toLowerCase() === 'h')) {
       event.preventDefault();
       const show = document.body.classList.contains('hud-hidden'); setHud(show);
       if (tourMode) (show ? hidePanel : restoreControls).focus({ preventScroll: true });
       return;
     }
-    if (!inspectionPreset && !editing && tourMode && viewMode === 'frames' && (event.key === 'ArrowRight' || event.key === 'ArrowLeft')) {
+    if (!inspectionPreset && !editing && tourMode && (event.key === 'ArrowRight' || event.key === 'ArrowLeft')) {
       event.preventDefault(); stepFrame(event.key === 'ArrowRight' ? 1 : -1); return;
     }
     if (event.target instanceof HTMLElement && event.target.closest('button, a, input, textarea, select')) return;
