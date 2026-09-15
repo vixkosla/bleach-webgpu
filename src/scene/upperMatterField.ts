@@ -15,6 +15,7 @@ export const createUpperMatterField = (
   noise: THREE.Data3DTexture, detail: THREE.Data3DTexture, time: THREE.Node<'float'>,
   compression: THREE.Node<'float'> = float(0), release: THREE.Node<'float'> = float(0),
   wake: THREE.Node<'float'> = float(0),
+  finalFlow: THREE.Node<'float'> = float(0),
 ) => {
   const flow = Fn(([point]: [THREE.Node<'vec3'>]) => {
     // Strain belongs to the escaping folds, not the analytic lunar radius.
@@ -23,7 +24,13 @@ export const createUpperMatterField = (
     const strain = release.mul(0.14).sub(compression.mul(0.07)).mul(outside);
     const drift = vec3(point.y.negate(), point.x, point.z.mul(0.35))
       .mul(wake.mul(0.09).mul(outside));
-    const flowing = point.mul(strain.oneMinus()).sub(drift);
+    // Viscous circulation shears slowly at the dense root, faster outside.
+    // Only the material coordinates turn; the analytic nail never rotates.
+    const angle = finalFlow.mul(.065).add(outside.mul(finalFlow.mul(.22).sin()).mul(.12));
+    const c = angle.cos(), s = angle.sin();
+    const advected = vec3(point.x.mul(c).sub(point.y.mul(s)),
+      point.x.mul(s).add(point.y.mul(c)), point.z);
+    const flowing = advected.mul(strain.oneMinus()).sub(drift);
     const q = flowing.mul(vec3(0.17, 0.23, 0.17))
       .add(vec3(time.mul(0.0028), time.mul(-0.004), time.mul(0.0017)));
     const warp = texture3D(noise, q.mul(0.63).add(0.37), 0).r;

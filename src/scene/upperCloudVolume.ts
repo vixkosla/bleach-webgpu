@@ -152,6 +152,7 @@ export const createUpperCloudVolume = (
   clock: THREE.Node<'float'>,
   exposure: THREE.Node<'float'>,
   ceiling: UpperWeatherCeiling,
+  finalFlow: THREE.Node<'float'>,
 ) => {
   const scene = new THREE.Scene(); scene.name = 'upper-cloud-volume-layer';
   const texture = createStormVolumeTexture();
@@ -231,9 +232,20 @@ export const createUpperCloudVolume = (
         // would pull dense banks onto the box exit and expose a straight cut.
         const deformationEnvelope = p.abs().x.max(p.abs().y).max(p.abs().z)
           .smoothstep(.30, .48).oneMinus();
+        // Two overlapping bounded traces replenish the field without a reset
+        // seam or accumulating shear. Each trace is empty in the blend when
+        // it wraps; density AND its baked light travel in identical coordinates.
+        const phaseA = finalFlow.div(24).add(.5).fract();
+        const phaseB = phaseA.add(.5).fract();
+        const flowWeight = phaseA.mul(Math.PI * 2).cos().mul(-.5).add(.5);
+        const bankTravel = vec3(-.085, .07, -.012).mul(deformationEnvelope);
         const bankUv = vec3(p.x.div(controls.bankSpread.mul(deformationEnvelope).add(1)), p.y, p.z)
           .add(0.5).add(wave);
-        const field = texture3D(texture, bankUv, 0).toVar();
+        const field = texture3D(texture, bankUv.add(bankTravel.mul(phaseA.sub(.5))), 0).toVar();
+        If(finalFlow.greaterThan(0), () => {
+          const incoming = texture3D(texture, bankUv.add(bankTravel.mul(phaseB.sub(.5))), 0);
+          field.assign(mix(incoming, field, flowWeight));
+        });
         const local = p.mul(vec3(SPAN.x, SPAN.y, SPAN.z)).add(vec3(OFFSET.x, OFFSET.y, OFFSET.z));
         const moonLocal = sourceFrame.mul(local).toVar();
         // The cloud shoulders follow the rooted expansion, but keep weather's
@@ -245,7 +257,7 @@ export const createUpperCloudVolume = (
         const weatherCoverage = ceiling.coverage(modelWorldMatrix.mul(vec4(p, 1)).xyz).toVar();
         const weatherMask = weatherRadius.smoothstep(UPPER_ATMOSPHERE.fog.start, UPPER_ATMOSPHERE.fog.full)
           .mul(weatherCoverage);
-        const wind = vec3(clock.mul(0.016), clock.mul(0.004), clock.mul(-0.012));
+        const wind = vec3(clock.mul(0.016), clock.mul(0.004).sub(finalFlow.mul(.05)), clock.mul(-0.012));
         // World-proportioned cellular volumes add coherent lobes and creases,
         // rather than uncorrelated grain sampled more finely than the ray step.
         const billows = texture3D(detailTexture, local.mul(0.72).add(wind), 0).toVar();
@@ -315,9 +327,16 @@ export const createUpperCloudVolume = (
         // depth-clipped storm integral, with its own baked rear illumination.
         // Broad advection deforms the bank; resolved billows erode its crests.
         const fold = p.x.mul(9).add(clock.mul(.15)).sin().mul(.025).mul(controls.centralFold);
+        // Counter-current: central grey folds stream upward. Replenishing the
+        // bounded bank keeps its broad billows, instead of winding it into tubes.
+        const greyTravel = vec3(.008, -.09, .016).mul(deformationEnvelope);
         const centralUv = vec3(p.x, p.y.add(fold.sub(controls.centralLift).mul(deformationEnvelope)), p.z)
           .add(0.5).add(wave.mul(0.45));
-        const central = texture3D(centralTexture, centralUv, 0).toVar();
+        const central = texture3D(centralTexture, centralUv.add(greyTravel.mul(phaseA.sub(.5))), 0).toVar();
+        If(finalFlow.greaterThan(0), () => {
+          const incoming = texture3D(centralTexture, centralUv.add(greyTravel.mul(phaseB.sub(.5))), 0);
+          central.assign(mix(incoming, central, flowWeight));
+        });
         const centralDensity = central.r.mul(billows.r.mul(0.48).add(0.68))
           .mul(controls.centralClouds).mul(weatherCoverage).mul(2.1).toVar();
         // Dilute air in front of the cloud carries its baked light/shadow

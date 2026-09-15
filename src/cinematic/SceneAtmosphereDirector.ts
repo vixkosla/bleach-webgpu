@@ -4,6 +4,7 @@ import type { createCityHaze } from '../materials/cityHaze';
 import type { SceneStoryState } from './SceneStoryState';
 import { smootherstep } from '../utils/math';
 import { MatterStoryState } from './MatterStoryState';
+import { finaleFlowTime } from './FinaleFlow';
 
 type Scalar = { value: number };
 type Binding = { control: Scalar; initial: number; sample: (state: SceneStoryState) => number };
@@ -95,7 +96,8 @@ export class SceneAtmosphereDirector {
     cue.atmosphereLight = state.atmosphereLight * (.35 + .65 * this.matterStory.cohesion); cue.cloudOpacity = state.cloudOpacity;
     cue.distantTime = state.distantTime + lifeTime * .32;
     cue.matter = this.matterStory;
-    cue.storyTime = state.time;
+    cue.storyTime = state.time + lifeTime;
+    cue.finalFlowTime = finaleFlowTime(state.time, lifeTime);
     this.upper.update(21.8, state.motionTime + lifeTime * .72, cue);
   }
 

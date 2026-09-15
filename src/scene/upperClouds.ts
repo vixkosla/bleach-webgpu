@@ -26,10 +26,10 @@ export const createUpperClouds = (
   const root = new THREE.Group();
   root.name = 'upper-storm-clouds';
   const noise = createCloudNoiseTexture();
-  const time = uniform(0), backgroundTime = uniform(0), exposure = uniform(0);
+  const time = uniform(0), backgroundTime = uniform(0), exposure = uniform(0), finalFlow = uniform(0);
   const ceiling = createUpperWeatherCeiling(layout, noise, time);
-  const volume = createUpperCloudVolume(layout, time, exposure, ceiling);
-  const skyDepth = createUpperSkyDepth(layout, noise, backgroundTime, exposure);
+  const volume = createUpperCloudVolume(layout, time, exposure, ceiling, finalFlow);
+  const skyDepth = createUpperSkyDepth(layout, noise, backgroundTime, exposure, finalFlow);
   const layers = SKY_LAYERS.map(() => ({
     offset: uniform(new THREE.Vector3()), density: uniform(1),
   }));
@@ -65,7 +65,10 @@ export const createUpperClouds = (
       direction.z.mul(7).sub(backgroundTime.mul(0.09)).add(index * 2).sin(),
       direction.x.mul(6).add(backgroundTime.mul(0.1)).sub(index).sin(),
     ).mul(0.018);
-    const fieldUv = direction.mul(layer.frequency).add(layer.offset).add(drift).add(rolling)
+    // Back-trace the late upper current: visible banks move down and right.
+    // It lives in world directions; the final camera never drags the weather.
+    const current = vec3(-.018, .024, -.003).mul(finalFlow).mul(layer.frequency);
+    const fieldUv = direction.mul(layer.frequency).add(layer.offset).add(drift).add(current).add(rolling)
       .add(layers[index]!.offset);
     const weather = texture3D(noise, fieldUv).r.mul(0.7)
       .add(texture3D(noise, fieldUv.mul(2.07).sub(layer.offset)).r.mul(0.3));
@@ -173,6 +176,7 @@ export const createUpperClouds = (
   root.add(backdrop);
 
   const update = (motion: number, birth: number, charge: number, opening: number, cloud: number, cue?: UpperAtmosphereCue) => {
+    finalFlow.value = cue?.finalFlowTime ?? 0;
     time.value = motion;
     // Distant weather evolves at 70% of the near-cloud clock. Derive it from
     // absolute motion time so pause, HOLD and reverse seek remain reproducible.
@@ -183,7 +187,7 @@ export const createUpperClouds = (
     volume.update(cue ? cloud > .001 : birth > 0 || charge > 0, cloud, cue ? 1 : 0.32 + birth * 0.68);
     volume.setStory(cue?.storyTime, cue?.matter);
   };
-  return { root, textures: [volume.texture, volume.detailTexture, volume.coronalTransmission], noise, controls, layers, volume, update, motionTime: time, backgroundMotionTime: backgroundTime, skyLayers: SKY_LAYERS,
+  return { root, textures: [volume.texture, volume.detailTexture, volume.coronalTransmission], noise, controls, layers, volume, update, finalFlow, motionTime: time, backgroundMotionTime: backgroundTime, skyLayers: SKY_LAYERS,
     dispose() { volume.dispose(); noise.dispose(); root.clear(); },
   };
 };

@@ -48,6 +48,7 @@ export type UpperEventLayout = ReturnType<typeof createUpperLayout>;
 export interface UpperAtmosphereCue {
   matter?: Readonly<MatterStoryPose>;
   storyTime?: number;
+  finalFlowTime?: number;
   presence: number;
   illumination: number;
   atmosphereLight?: number;
@@ -179,6 +180,7 @@ export const createUpperEvent = (crown: THREE.Vector3, citadelOrientation = new 
     group.visible = state.visible;
     clouds.update(motion, state.birth, state.charge, state.opening, state.cloud, cue);
     matter.setStory(cue?.matter);
+    matter.finalFlow.value = cue?.finalFlowTime ?? 0;
     matter.update(cue ? (cue.matter ? cue.matter.assembly > 0 : cue.presence > .001) : state.visible, cue ? 1 : state.birth);
     // The authored dense plate grows about its lower world-space attachment.
     // Preserve the historical cue/inspector contract when no story is supplied.

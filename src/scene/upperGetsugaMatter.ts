@@ -19,6 +19,7 @@ export const createUpperGetsugaMatter = (
   const controls = { strength: uniform(1), density: uniform(9.0), coreDensity: uniform(110), speed: uniform(1), offset: uniform(0), birth: uniform(0), roots: uniform(1), wisps: uniform(1), flameTips: uniform(1), scatter: uniform(1), openings: uniform(1), contour: uniform(1.15), cavityLight: uniform(0.45) };
   const story = { assembly: uniform(1), cohesion: uniform(1), compression: uniform(0), release: uniform(0), wake: uniform(0) };
   const growth = new THREE.Vector3(1, 1, 1);
+  const finalFlow = uniform(0);
   const setStory = (pose?: Readonly<MatterStoryPose>) => {
     story.assembly.value = pose?.assembly ?? 1;
     story.cohesion.value = pose?.cohesion ?? 1;
@@ -49,7 +50,7 @@ export const createUpperGetsugaMatter = (
   mesh.scale.copy(span).multiplyScalar(layout.radius); scene.add(mesh);
 
   const matterClock = clock.mul(controls.speed).add(controls.offset);
-  const field = createUpperMatterField(noise, detail, matterClock, story.compression, story.release, story.wake);
+  const field = createUpperMatterField(noise, detail, matterClock, story.compression, story.release, story.wake, finalFlow);
   // Compatibility handle for inspecting the same source on the solid skin.
   const surfaceActivity = Fn(([point]: [THREE.Node<'vec3'>]) => {
     return field.flow(point).y;
@@ -202,7 +203,7 @@ export const createUpperGetsugaMatter = (
     })();
   };
   setDepth(float(-1e8));
-  return { scene, mesh, material, controls, story, growth, setStory, field, surfaceActivity, surfaceFrame, setDepth,
+  return { scene, mesh, material, controls, story, growth, finalFlow, setStory, field, surfaceActivity, surfaceFrame, setDepth,
     update: (visible: boolean, birth: number) => { mesh.visible = visible && birth > 0.001; controls.birth.value = birth; },
     dispose: () => { mesh.geometry.dispose(); material.dispose(); scene.clear(); },
   };

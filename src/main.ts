@@ -679,7 +679,7 @@ const init = async (): Promise<void> => {
       tour,
       storyAtmosphere,
       frameTransition, frameFlight, travelBlur, pacing,
-      viewer: { get playing() { return playing; }, get selectedFrame() { return selectedFrame; }, get bookmark() { return bookmarkPose; } },
+      viewer: { get playing() { return playing; }, get selectedFrame() { return selectedFrame; }, get bookmark() { return bookmarkPose; }, get finaleLifeTime() { return finaleLifeTime; } },
       wordmark,
       upperEvent,
       upperComposite,
@@ -713,6 +713,7 @@ const init = async (): Promise<void> => {
       ? Math.min(filmDuration, exactTime)
       : 0;
   const requestedFrame = Number(url.searchParams.get('frame')) - 1;
+  let finaleLifeTime = 0;
   if (tourMode && Number.isInteger(requestedFrame) && requestedFrame >= 0 && requestedFrame < SCENE_TOUR_FRAMES.length) {
     selectedFrame = requestedFrame; currentTime = SCENE_TOUR_FRAMES[requestedFrame]!.time;
   } else if (bookmarkPose) selectedFrame = SCENE_TOUR_FRAMES.findIndex(f => Math.abs(f.time - currentTime) < .01);
@@ -804,8 +805,7 @@ const init = async (): Promise<void> => {
     if (value) frameTravelPaused = false;
     else if (playing && frameTransition.active) frameTravelPaused = true;
     if (value && tourMode && !frameTransition.active) {
-      if (currentTime >= filmDuration) { currentTime = 0; bookmarkPose = false; selectedFrame = -1; }
-      else if (bookmarkPose) joinFilm();
+      if (bookmarkPose && currentTime < filmDuration) joinFilm();
     }
     playing = value;
     playButton.dataset.playing = String(playing);
@@ -946,6 +946,7 @@ const init = async (): Promise<void> => {
     if (!inspectionPreset) setPlaying(!playing);
   });
   timeline.addEventListener('input', () => {
+    finaleLifeTime = 0;
     frameTransition.cancel(); bookmarkPose = false;
     currentTime = pacing ? pacing.storyAt(Number(timeline.value)) : Number(timeline.value);
     selectedFrame = -1;
@@ -959,6 +960,7 @@ const init = async (): Promise<void> => {
   });
   const chooseFrame = (index: number): void => {
     if (!tour || inspectionPreset) return;
+    finaleLifeTime = 0;
     const frame = SCENE_TOUR_FRAMES[Math.max(0, Math.min(SCENE_TOUR_FRAMES.length - 1, index))]!;
     const incomingSmear = frameTransition.amount * (bookmarkPose ? 1 : .12);
     const incomingPush = bookmarkPose ? frameTransition.push : 0;
@@ -1185,9 +1187,13 @@ const init = async (): Promise<void> => {
       }
     }
     if (!firstFrame && playing && !frameTransition.active && !inspectionPreset && (!tourMode || document.visibilityState === 'visible')) {
-      currentTime = pacing ? pacing.storyAt(pacing.filmAt(currentTime) + delta) : currentTime + delta;
+      if (tourMode && pacing) {
+        const nextFilm = pacing.filmAt(currentTime) + delta;
+        finaleLifeTime += Math.max(0, nextFilm - displayDuration);
+        currentTime = pacing.storyAt(nextFilm);
+      } else currentTime += delta;
       if (currentTime >= filmDuration) {
-        if (tourMode) { currentTime = filmDuration; setPlaying(false); if (!document.body.classList.contains('hud-hidden')) setHud(true); }
+        if (tourMode) currentTime = filmDuration;
         else currentTime %= filmDuration;
       }
     }
@@ -1250,7 +1256,7 @@ const init = async (): Promise<void> => {
         upperMotionTime += delta;
       }
       if (tour && !inspectionPreset && storyAtmosphere) {
-        storyAtmosphere.update(tour.state);
+        storyAtmosphere.update(tour.state, finaleLifeTime);
       } else {
         storyAtmosphere?.restore();
         upperEvent.update(inspectionPreset && skyVisible ? upperTime : 0, upperMotionTime);

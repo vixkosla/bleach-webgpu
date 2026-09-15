@@ -10,6 +10,7 @@ export const createUpperSkyDepth = (
   noise: THREE.Data3DTexture,
   clock: THREE.Node<'float'>,
   exposure: THREE.Node<'float'>,
+  finalFlow: THREE.Node<'float'>,
 ) => {
   const controls = { skyDepth: uniform(0), skyLift: uniform(0), skyLower: uniform(.2) };
   const centre = vec3(layout.center.x, 900, layout.center.z);
@@ -43,7 +44,14 @@ export const createUpperSkyDepth = (
         const middle = height.sub(560).div(440).pow(2).mul(-1.4).exp();
         const upper = height.sub(1580).div(680).pow(2).mul(-1.5).exp().mul(.8);
         const envelope = low.max(middle).max(upper).mul(coast);
-        const q = vec3(point.x, height, point.z).mul(vec3(.000043, .000105, .000051)).add(wind);
+        // Rear violet shelves descend; high banks also travel right. The
+        // envelopes stay anchored, while folds stream through their depths.
+        const high = height.smoothstep(700, 1600);
+        const transport = vec3(high.mul(-18).sub(4), 24, 3).mul(finalFlow);
+        const rollingFlow = point.z.mul(.002).add(finalFlow.mul(.22)).sin()
+          .sub(point.z.mul(.002).sin()).mul(48);
+        const q = vec3(point.x, height.add(rollingFlow), point.z).add(transport)
+          .mul(vec3(.000043, .000105, .000051)).add(wind);
         const broad = texture3D(noise, q.add(.31), 0).r.toVar();
         const folds = texture3D(noise, q.mul(vec3(2.2, 2.8, 2.1)).sub(wind.mul(.5)).add(.67), 0).r;
         const field = broad.mul(.72).add(folds.mul(.28));
