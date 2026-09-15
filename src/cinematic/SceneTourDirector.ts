@@ -5,6 +5,7 @@ import { CitadelOverview } from './CitadelOverview';
 import { createUpperInspectionPreset } from './upperInspection';
 import { pulse, smoothstep, smootherstep } from '../utils/math';
 import { SceneStoryState, SCENE_STORY_DURATION, SCENE_STORY_BEATS, SCENE_STORY_INTRO } from './SceneStoryState';
+import { MatterStoryState, writeMatterGrowth } from './MatterStoryState';
 
 export const SCENE_TOUR_DURATION = SCENE_STORY_DURATION;
 export const SCENE_TOUR_BEATS = SCENE_STORY_BEATS;
@@ -42,6 +43,13 @@ export class SceneTourDirector {
   private readonly rollTrack;
   private readonly displacement = new THREE.Vector3();
   private readonly direction = new THREE.Vector3();
+  private readonly matterStory = new MatterStoryState();
+  private readonly matterGrowth = new THREE.Vector3();
+  private readonly birthSubject = new THREE.Vector3();
+  private readonly fitPoint = new THREE.Vector3();
+  private readonly fitForward = new THREE.Vector3();
+  private readonly fitRight = new THREE.Vector3();
+  private readonly fitUp = new THREE.Vector3();
   private readonly streetForward = new THREE.Vector3(1, .035, 0).normalize();
   private readonly moonCenter: THREE.Vector3;
   private readonly moonRadius: number;
@@ -153,10 +161,31 @@ export class SceneTourDirector {
         .lerp(this.streetForward, street).normalize();
       this.target.copy(this.camera.position).addScaledVector(this.direction, distance + (200 - distance) * street);
     }
+    // Hand attention from the spire to the ACTUAL growing plate before it
+    // emerges. Keep the castle's orbit as foreground, not the sole actor.
+    // Aim follows the same rooted growth as the volume, not the final moon
+    // center floating far above a small newly born body.
+    writeMatterGrowth(this.matterStory.update(storyTime), this.matterGrowth);
+    this.birthSubject.set(.25 * this.matterGrowth.x, this.matterGrowth.y - 1, 0)
+      .multiplyScalar(this.moonRadius).applyQuaternion(this.layout.orientation).add(this.moonCenter);
+    const attention = smootherstep(11.5, 14, storyTime)
+      * (.96 - .20 * smootherstep(18, 23, storyTime))
+      * (1 - smootherstep(27, 31, storyTime));
+    this.target.lerp(this.birthSubject, attention);
     const lens = this.lensTrack.evaluate(t)[0]!;
     const tangent = Math.tan(THREE.MathUtils.degToRad(lens) * .5);
     const aspect = Math.max(.25, this.camera.aspect);
     let fov = Math.min(96, THREE.MathUtils.radToDeg(2 * Math.atan(tangent / Math.min(1, aspect))));
+    // Include a 4:3 tablet in landscape: it also loses the wide shot's
+    // side allowance, despite not being a portrait viewport.
+    const portrait = 1 - smoothstep(1.35, 1.5, aspect);
+    const framing = portrait * smootherstep(11.5, 14.5, storyTime)
+      * (1 - smootherstep(28, 37, storyTime));
+    // Phone: a calmer 72° vertical lens; portrait tablet: up to 80°.
+    // Fit the subject with camera distance, not a very wide vertical lens
+    // that leaves the newborn plate tiny in a tall empty sky.
+    fov += (Math.min(fov, 72 + 8 * smoothstep(.5, 1, aspect)) - fov) * framing;
+    const roll = THREE.MathUtils.degToRad(this.rollTrack.evaluate(t)[0]! * (1 - smootherstep(56, 60, storyTime)));
     this.displacement.copy(this.camera.position).sub(this.target);
     const reveal = smootherstep(27, 33, t) * (1 - smootherstep(44, 48, t));
     if (reveal > 0) {
@@ -165,6 +194,31 @@ export class SceneTourDirector {
       this.displacement.multiplyScalar(1 + Math.max(0, required / this.displacement.length() - 1) * reveal);
     }
     this.camera.position.copy(this.target).add(this.displacement);
+    if (framing > 0) {
+      this.fitForward.subVectors(this.target, this.camera.position).normalize();
+      this.fitUp.set(0, 1, 0);
+      this.fitRight.crossVectors(this.fitForward, this.fitUp).normalize();
+      this.fitUp.crossVectors(this.fitRight, this.fitForward);
+      const half = Math.tan(THREE.MathUtils.degToRad(fov) * .5) * .90;
+      const cos = Math.cos(roll), sin = Math.sin(roll);
+      let retreat = 0;
+      // Eight corners protect the evolving plate's width AND thickness,
+      // including the side view. Also keep the crown and upper keep visible.
+      for (let i = 0; i < 10; i++) {
+        if (i < 8) this.fitPoint.set((i & 1 ? 1 : -1) * this.matterGrowth.x,
+          (i & 2 ? 1 : -1) * this.matterGrowth.y + this.matterGrowth.y - 1,
+          (i & 4 ? .3 : -.3) * this.matterGrowth.z)
+          .multiplyScalar(this.moonRadius).applyQuaternion(this.layout.orientation).add(this.moonCenter);
+        else this.fitPoint.copy(this.layout.crown).addScaledVector(this.camera.up, i === 8 ? 0 : -90);
+        this.fitPoint.sub(this.camera.position);
+        const x = this.fitPoint.dot(this.fitRight), y = this.fitPoint.dot(this.fitUp);
+        const depth = this.fitPoint.dot(this.fitForward);
+        retreat = Math.max(retreat, Math.abs(x * cos + y * sin) / (half * aspect) - depth,
+          Math.abs(y * cos - x * sin) / half - depth);
+      }
+      this.camera.position.addScaledVector(this.fitForward,
+        -retreat * smootherstep(0, 60, retreat) * framing);
+    }
     // Preserve the exact saved right-side pose, including its narrower
     // portrait lens. Cache the aspect adaptation instead of allocating per frame.
     if (aspect !== this.homeAspect) {
@@ -185,7 +239,7 @@ export class SceneTourDirector {
       fov += (this.overview.fov - fov) * revealAll;
     }
     this.camera.up.set(0, 1, 0); this.camera.lookAt(this.target);
-    this.camera.rotateZ(THREE.MathUtils.degToRad(this.rollTrack.evaluate(t)[0]! * (1 - smootherstep(56, 60, storyTime))));
+    this.camera.rotateZ(roll);
     if (Math.abs(this.camera.fov - fov) > .001) {
       this.camera.fov = fov; this.camera.updateProjectionMatrix();
     }

@@ -11,7 +11,7 @@ export const strikeQuincyControl = (button: HTMLButtonElement | null): void => {
   strikes.set(button, setTimeout(() => { button.classList.remove('q-struck'); strikes.delete(button); }, 280));
 };
 
-/** Five main actions around the chapter dials; all camera handlers stay native. */
+/** One player and chapter bookmarks; all camera handlers stay native. */
 export const createQuincyInterface = () => {
   document.body.classList.add('quincy-interface');
   const decorate = (id: string, markup: string, key: string, shortcuts = key) => {
@@ -21,10 +21,7 @@ export const createQuincyInterface = () => {
       button.setAttribute('aria-keyshortcuts', shortcuts);
     }
   };
-  decorate('mode-cinema', inkIcon('cinema', 'q-mode-cinema') + inkIcon('frames', 'q-mode-frames')
-    + '<span class="q-button-label q-mode-cinema">Кино</span><span class="q-button-label q-mode-frames">Кадры</span>', 'V');
   decorate('play', playbackInk() + '<span class="q-button-label">Пуск / пауза</span>', 'P', 'P Space');
-  decorate('frame-motion', playbackInk() + '<span class="q-button-label">Движение</span>', 'M');
   decorate('frame-previous', inkIcon('arrow') + '<span class="q-button-label">Назад</span>', '←', 'ArrowLeft');
   decorate('frame-next', inkIcon('arrow', 'q-reverse') + '<span class="q-button-label">Вперёд</span>', '→', 'ArrowRight');
   decorate('hide-panel', inkIcon('hide') + '<span class="q-button-label">Скрыть</span>', 'H');
@@ -69,7 +66,7 @@ export const createQuincyEntry = () => {
   title.setAttribute('aria-label', 'BLEACH · Wahr Welt');
   title.innerHTML = '<span>BLEACH</span>' + wahrWeltInk();
   entry.prepend(title);
-  for (const [index, link] of [...entry.querySelectorAll('a')].entries()) {
-    link.innerHTML = inkIcon(index === 0 ? 'cinema' : 'frames') + `<span>${index === 0 ? 'Смотреть кино' : 'Выбрать кадр'}</span>`;
+  for (const link of entry.querySelectorAll('a')) {
+    link.innerHTML = inkIcon('cinema') + '<span>Смотреть кино</span>';
   }
 };

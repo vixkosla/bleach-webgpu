@@ -28,7 +28,7 @@ import { FrameTransition } from './cinematic/FrameTransition';
 import { FrameFlight } from './cinematic/FrameFlight';
 import { ScenePacing } from './cinematic/ScenePacing';
 import { createFrameTravelBlur } from './materials/frameTravelBlur';
-import { createSceneNavigation, type SceneViewMode } from './ui/sceneNavigation';
+import { createSceneNavigation } from './ui/sceneNavigation';
 import { SceneAtmosphereDirector } from './cinematic/SceneAtmosphereDirector';
 import { createInspectionNavigation } from './cinematic/inspectionNavigation';
 import { createUpperInspectionPreset, UPPER_SHOT_PRESETS, type UpperShotSettings } from './cinematic/upperInspection';
@@ -611,11 +611,11 @@ const init = async (): Promise<void> => {
     ? new SceneAtmosphereDirector(upperEvent, architectureGrade, cityHaze) : null;
 
   const frameTransition = new FrameTransition();
-  let viewMode: SceneViewMode = url.searchParams.get('view') === 'frames' ? 'frames' : 'cinema';
+  // A bookmark is a paused composition, not another playback mode.
+  let bookmarkPose = url.searchParams.has('frame') || url.searchParams.get('view') === 'frames';
+  let frameTravelPaused = false;
   let selectedFrame = -1;
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
-  let frameMotion = !reducedMotion.matches && url.searchParams.get('motion') !== '0';
-  let frameLifeTime = 0;
   const travelBlur = tour ? createFrameTravelBlur(inspectionRenderPipeline.outputNode as THREE.Node<'vec4'>) : null;
   if (travelBlur) inspectionRenderPipeline.outputNode = travelBlur.output;
   const travelPreviewCamera = camera.clone();
@@ -679,7 +679,7 @@ const init = async (): Promise<void> => {
       tour,
       storyAtmosphere,
       frameTransition, frameFlight, travelBlur, pacing,
-      viewer: { get mode() { return viewMode; }, get selectedFrame() { return selectedFrame; }, get live() { return frameMotion; }, get lifeTime() { return frameLifeTime; } },
+      viewer: { get playing() { return playing; }, get selectedFrame() { return selectedFrame; }, get bookmark() { return bookmarkPose; } },
       wordmark,
       upperEvent,
       upperComposite,
@@ -712,7 +712,11 @@ const init = async (): Promise<void> => {
     : Number.isFinite(exactTime) && exactTime >= 0
       ? Math.min(filmDuration, exactTime)
       : 0;
-  let playing = !inspectionPreset && (!tourMode || viewMode === 'cinema')
+  const requestedFrame = Number(url.searchParams.get('frame')) - 1;
+  if (tourMode && Number.isInteger(requestedFrame) && requestedFrame >= 0 && requestedFrame < SCENE_TOUR_FRAMES.length) {
+    selectedFrame = requestedFrame; currentTime = SCENE_TOUR_FRAMES[requestedFrame]!.time;
+  } else if (bookmarkPose) selectedFrame = SCENE_TOUR_FRAMES.findIndex(f => Math.abs(f.time - currentTime) < .01);
+  let playing = !inspectionPreset && !bookmarkPose
     && !url.searchParams.has('paused')
     && !url.searchParams.has('t')
     && !url.searchParams.has('ft')
@@ -721,8 +725,7 @@ const init = async (): Promise<void> => {
   let renderRevision = 0;
   let renderedRevision = -1;
   let renderedTime = NaN;
-  let renderedLifeTime = NaN;
-  let renderedView: SceneViewMode | null = null;
+  let renderedBookmarkPose = false;
   let renderedStill = false;
   let renderedFov = NaN;
   const renderedPosition = new THREE.Vector3(NaN, NaN, NaN);
@@ -787,21 +790,34 @@ const init = async (): Promise<void> => {
     performanceFrameCount = 0;
   };
 
+  const joinFilm = (): void => {
+    if (!frameFlight || !travelPreview || !tour) return;
+    travelPreviewCamera.aspect = camera.aspect; travelPreview.update(currentTime);
+    frameFlight.start(camera, tour.target, travelPreviewCamera, travelPreview.target);
+    frameTransition.start(currentTime, currentTime, reducedMotion.matches, 0, 0, frameFlight.length);
+    // Only reconcile a held composition with the moving track; no second
+    // full chapter flight, restart, or user-visible mode switch.
+    frameTransition.duration = Math.min(.4, frameTransition.duration);
+    bookmarkPose = false; selectedFrame = -1;
+  };
   const setPlaying = (value: boolean): void => {
-    frameTransition.cancel();
-    if (value && tourMode) {
-      if (viewMode === 'frames' && currentTime < filmDuration && frameFlight && travelPreview && tour) {
-        travelPreviewCamera.aspect = camera.aspect; travelPreview.update(currentTime);
-        frameFlight.start(camera, tour.target, travelPreviewCamera, travelPreview.target);
-        frameTransition.start(currentTime, currentTime, reducedMotion.matches, 0, 0, frameFlight.length);
-      }
-      viewMode = 'cinema'; selectedFrame = -1;
+    if (value) frameTravelPaused = false;
+    else if (playing && frameTransition.active) frameTravelPaused = true;
+    if (value && tourMode && !frameTransition.active) {
+      if (currentTime >= filmDuration) { currentTime = 0; bookmarkPose = false; selectedFrame = -1; }
+      else if (bookmarkPose) joinFilm();
     }
-    if (value && tourMode && currentTime >= filmDuration) currentTime = 0;
     playing = value;
     playButton.dataset.playing = String(playing);
     if (!tourMode) playButton.textContent = playing ? 'Ⅱ' : '▶';
-    playButton.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+    playButton.setAttribute('aria-label', playing ? 'Пауза' : 'Продолжить воспроизведение');
+    if (tourMode && !inspectionPreset) {
+      url.searchParams.delete('view'); url.searchParams.delete('motion'); url.searchParams.delete('ft');
+      url.searchParams.set('t', String(currentTime));
+      if (playing) { url.searchParams.delete('paused'); url.searchParams.delete('frame'); }
+      else { url.searchParams.set('paused', ''); if (bookmarkPose && selectedFrame >= 0) url.searchParams.set('frame', String(selectedFrame + 1)); else url.searchParams.delete('frame'); }
+      window.history.replaceState(null, '', url);
+    }
   };
   setPlaying(playing);
 
@@ -822,7 +838,7 @@ const init = async (): Promise<void> => {
     document.body.classList.toggle('upper-mode', name === 'upper');
     const heading = inspection.querySelector('span');
     if (heading) heading.textContent = name === 'upper' ? 'GETSUGA · FINAL VIEW' : 'ARCHITECTURE INSPECTION';
-    setPlaying(false);
+    frameTransition.cancel(); setPlaying(false);
     document.body.classList.add('inspection-mode');
     document.body.classList.remove('hud-hidden');
     controls.inert = false; controls.removeAttribute('aria-hidden');
@@ -930,11 +946,12 @@ const init = async (): Promise<void> => {
     if (!inspectionPreset) setPlaying(!playing);
   });
   timeline.addEventListener('input', () => {
+    frameTransition.cancel(); bookmarkPose = false;
     currentTime = pacing ? pacing.storyAt(Number(timeline.value)) : Number(timeline.value);
     selectedFrame = -1;
     setPlaying(false);
     if (tourMode) {
-      viewMode = 'cinema';
+      url.searchParams.delete('frame');
       url.searchParams.delete('view'); url.searchParams.delete('ft');
       url.searchParams.set('t', String(currentTime)); url.searchParams.set('paused', '');
       window.history.replaceState(null, '', url);
@@ -943,9 +960,9 @@ const init = async (): Promise<void> => {
   const chooseFrame = (index: number): void => {
     if (!tour || inspectionPreset) return;
     const frame = SCENE_TOUR_FRAMES[Math.max(0, Math.min(SCENE_TOUR_FRAMES.length - 1, index))]!;
-    const incomingSmear = frameTransition.amount;
-    const incomingPush = frameTransition.push;
-    setPlaying(false); viewMode = 'frames'; selectedFrame = SCENE_TOUR_FRAMES.indexOf(frame);
+    const incomingSmear = frameTransition.amount * (bookmarkPose ? 1 : .12);
+    const incomingPush = bookmarkPose ? frameTransition.push : 0;
+    frameTransition.cancel(); setPlaying(false); frameTravelPaused = false; bookmarkPose = true; selectedFrame = SCENE_TOUR_FRAMES.indexOf(frame);
     strikeQuincyControl(document.querySelector<HTMLButtonElement>(`[data-frame="${selectedFrame}"]`));
     travelPreviewCamera.aspect = camera.aspect;
     travelPreview!.updateFrame(frame.time);
@@ -953,7 +970,7 @@ const init = async (): Promise<void> => {
     frameTransition.start(currentTime, frame.time, reducedMotion.matches, incomingSmear, incomingPush, frameFlight!.length);
     if (!frameTransition.active) currentTime = frameTransition.time;
     if (!document.body.classList.contains('hud-hidden')) setHud(true);
-    url.searchParams.set('view', 'frames'); url.searchParams.set('t', String(frame.time));
+    url.searchParams.set('frame', String(selectedFrame + 1)); url.searchParams.set('t', String(frame.time));
     url.searchParams.set('paused', ''); window.history.replaceState(null, '', url);
   };
   const stepFrame = (direction: number): void => {
@@ -967,24 +984,11 @@ const init = async (): Promise<void> => {
     chooseFrame(index + direction);
   };
   const navigation = tour ? createSceneNavigation(SCENE_TOUR_FRAMES, {
-    mode: mode => {
-      if (inspectionPreset) return;
-      setPlaying(mode === 'cinema'); viewMode = mode; selectedFrame = -1; setHud(true);
-      url.searchParams.delete('t'); url.searchParams.delete('ft');
-      if (mode === 'frames') { url.searchParams.set('view', 'frames'); url.searchParams.set('paused', ''); }
-      else { url.searchParams.delete('view'); url.searchParams.delete('paused'); }
-      window.history.replaceState(null, '', url);
-    },
     frame: chooseFrame, step: stepFrame,
-    motion: () => {
-      frameMotion = !frameMotion;
-      url.searchParams.set('motion', frameMotion ? '1' : '0');
-      window.history.replaceState(null, '', url);
-    },
   }) : null;
   if (tourMode) createQuincyInterface();
   reducedMotion.addEventListener('change', () => {
-    if (reducedMotion.matches) { frameMotion = false; if (selectedFrame >= 0) currentTime = SCENE_TOUR_FRAMES[selectedFrame]!.time; setPlaying(false); if (travelBlur) travelBlur.amount.value = 0; }
+    if (reducedMotion.matches) { frameTransition.cancel(); if (selectedFrame >= 0) currentTime = SCENE_TOUR_FRAMES[selectedFrame]!.time; setPlaying(false); if (travelBlur) travelBlur.amount.value = 0; }
   });
   hudButton.addEventListener('click', () => setHud(false));
   inspectButton.addEventListener('click', () => activateInspectionPreset('street'));
@@ -1050,7 +1054,6 @@ const init = async (): Promise<void> => {
   canvas.addEventListener('pointerdown', () => {
     if (landingMode) return;
     if (inspectionPreset) { canvas.focus({ preventScroll: true }); return; }
-    if (tourMode && viewMode === 'frames') { setHud(true); return; }
     const hidden = document.body.classList.contains('hud-hidden');
     if (hidden) setHud(true);
     else setPlaying(!playing);
@@ -1073,9 +1076,7 @@ const init = async (): Promise<void> => {
     // chapter button or timeline has focus. Physical codes support Russian input.
     if (tourMode && !inspectionPreset && !typing && !event.shiftKey) {
       const key = event.code || `Key${event.key.toUpperCase()}`;
-      const action = key === 'KeyV' ? document.querySelector<HTMLButtonElement>('#mode-cinema')
-        : key === 'KeyM' && viewMode === 'frames' ? document.querySelector<HTMLButtonElement>('#frame-motion')
-        : key === 'KeyP' && viewMode === 'cinema' ? playButton
+      const action = key === 'KeyP' ? playButton
         : key === 'KeyH' ? (document.body.classList.contains('hud-hidden') ? restoreControls : hidePanel)
         : null;
       if (action) { event.preventDefault(); if (!event.repeat) action.click(); return; }
@@ -1110,7 +1111,6 @@ const init = async (): Promise<void> => {
     if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
       if (inspectionPreset) return;
       const direction = event.key === 'ArrowRight' ? 1 : -1;
-      if (tourMode && viewMode === 'frames') { event.preventDefault(); stepFrame(direction); return; }
       currentTime = Math.max(0, Math.min(filmDuration, currentTime + direction * 0.1));
       setPlaying(false);
     }
@@ -1138,7 +1138,11 @@ const init = async (): Promise<void> => {
     camera.updateProjectionMatrix();
     renderer.setPixelRatio(ratio);
     renderer.setSize(window.innerWidth, window.innerHeight);
-    if (frameTransition.active && viewMode === 'frames' && selectedFrame >= 0) chooseFrame(selectedFrame);
+    if (frameTransition.active && bookmarkPose && selectedFrame >= 0) {
+      const resume = playing, pausedTravel = frameTravelPaused;
+      chooseFrame(selectedFrame); frameTravelPaused = pausedTravel;
+      if (resume) setPlaying(true);
+    }
   };
   window.addEventListener('resize', resize);
   // Catch a phone rotation that happened while geometry/shaders were loading.
@@ -1173,11 +1177,12 @@ const init = async (): Promise<void> => {
     // edit locked to wall time while still rejecting very long background-tab jumps.
     const delta = Math.min(1, Math.max(0, (wallNow - previousNow) / 1000));
     previousNow = wallNow;
-    if (!firstFrame && tour && !inspectionPreset && viewMode === 'frames' && frameMotion && document.visibilityState === 'visible') {
-      frameLifeTime += Math.min(.1, delta);
-    }
-    if (!firstFrame && frameTransition.active && !inspectionPreset && document.visibilityState === 'visible') {
+    if (!firstFrame && frameTransition.active && (playing || (bookmarkPose && !frameTravelPaused)) && !inspectionPreset && document.visibilityState === 'visible') {
       currentTime = frameTransition.update(delta);
+      if (!frameTransition.active && playing && bookmarkPose && frameFlight && tour) {
+        frameFlight.sample(1, camera); tour.target.copy(frameFlight.target);
+        joinFilm();
+      }
     }
     if (!firstFrame && playing && !frameTransition.active && !inspectionPreset && (!tourMode || document.visibilityState === 'visible')) {
       currentTime = pacing ? pacing.storyAt(pacing.filmAt(currentTime) + delta) : currentTime + delta;
@@ -1200,14 +1205,14 @@ const init = async (): Promise<void> => {
         tour.state.update(currentTime);
         frameFlight.sample(frameTransition.progress, camera);
         tour.target.copy(frameFlight.target);
-      } else if (viewMode === 'frames') tour.updateFrame(currentTime);
+      } else if (bookmarkPose) tour.updateFrame(currentTime);
       else tour.update(currentTime);
       if (travelBlur) {
-        const amount = reducedMotion.matches ? 0 : Math.max(frameTransition.amount,
-          viewMode === 'cinema' && playing ? Math.max(tour.motionSmear, .11 * (pacing?.rushAt(currentTime) ?? 0)) : 0);
+        const amount = reducedMotion.matches ? 0 : Math.max(frameTransition.amount * (bookmarkPose ? 1 : .12),
+          playing ? Math.max(tour.motionSmear, .11 * (pacing?.rushAt(currentTime) ?? 0)) : 0);
         travelBlur.amount.value = amount;
         if (amount > 0) {
-          const follow = 1 - Math.exp(-delta * 8);
+          const follow = !playing && frameTravelPaused ? 0 : 1 - Math.exp(-delta * 8);
           if (travelPreview) {
             travelPreviewCamera.aspect = camera.aspect;
             if (frameTransition.active && frameFlight) travelAim.copy(frameFlight.lookAhead);
@@ -1227,7 +1232,7 @@ const init = async (): Promise<void> => {
           travelBlur.direction.value.lerp(smearDirection, follow);
           // Off-axis lens push into the next direction; never widen the lens.
           // World-space position follows the selected clear spatial corridor.
-          const zoom = 1 + frameTransition.push * .46, crop = 1 - 1 / zoom;
+          const zoom = 1 + (bookmarkPose ? frameTransition.push : 0) * .46, crop = 1 - 1 / zoom;
           camera.setViewOffset(camera.aspect, 1, travelBlur.focus.value.x * camera.aspect * crop,
             travelBlur.focus.value.y * crop, camera.aspect / zoom, 1 / zoom);
         } else {
@@ -1245,7 +1250,7 @@ const init = async (): Promise<void> => {
         upperMotionTime += delta;
       }
       if (tour && !inspectionPreset && storyAtmosphere) {
-        storyAtmosphere.update(tour.state, frameLifeTime);
+        storyAtmosphere.update(tour.state);
       } else {
         storyAtmosphere?.restore();
         upperEvent.update(inspectionPreset && skyVisible ? upperTime : 0, upperMotionTime);
@@ -1301,18 +1306,16 @@ const init = async (): Promise<void> => {
     }
 
     uiIdleTimer += delta;
-    navigation?.update(viewMode, currentTime, selectedFrame, frameTransition.active, frameMotion);
+    navigation?.update(playing, currentTime, selectedFrame, frameTransition.active && (playing || (bookmarkPose && !frameTravelPaused)));
     if (!tourMode && playing && !inspectionPreset && uiIdleTimer > 4 && url.searchParams.get('hud') !== '1') setHud(false);
 
     // A fully paused tour has no time-driven shaders or temporal accumulation.
     // Keep its final image; resume on playback, live atmosphere, travel, seek,
     // viewport changes or tab restoration. Debug/inspection keep continuous
     // rendering so direct live edits to uniforms and cameras remain observable.
-    const still = !!tour && !inspectionPreset && !playing && !frameTransition.active
-      && (viewMode !== 'frames' || !frameMotion);
+    const still = !!tour && !inspectionPreset && !playing && !(frameTransition.active && bookmarkPose && !frameTravelPaused);
     if (!firstFrame && still && renderedStill && url.searchParams.get('debug') !== '1'
-      && renderedTime === currentTime && renderedLifeTime === frameLifeTime
-      && renderedView === viewMode && renderedRevision === renderRevision
+      && renderedTime === currentTime && renderedBookmarkPose === bookmarkPose && renderedRevision === renderRevision
       && renderedFov === camera.fov && renderedPosition.equals(camera.position)
       && renderedQuaternion.equals(camera.quaternion)) return;
 
@@ -1326,8 +1329,8 @@ const init = async (): Promise<void> => {
       return;
     }
     if (deviceStatus.failed) return;
-    renderedStill = still; renderedTime = currentTime; renderedLifeTime = frameLifeTime;
-    renderedView = viewMode; renderedRevision = renderRevision;
+    renderedStill = still; renderedTime = currentTime;
+    renderedBookmarkPose = bookmarkPose; renderedRevision = renderRevision;
     renderedFov = camera.fov; renderedPosition.copy(camera.position); renderedQuaternion.copy(camera.quaternion);
     if (firstFrame) {
       firstFrame = false;

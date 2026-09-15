@@ -10,7 +10,7 @@ body.quincy-interface #controls {
   color:var(--q-ink); font-family:Georgia,'Times New Roman',serif; pointer-events:none;
   text-shadow:var(--q-shadow);
 }
-body.quincy-interface #viewer-modes, body.quincy-interface .view-switch,
+body.quincy-interface #player-controls,
 body.quincy-interface .frame-life, body.quincy-interface #frame-controls,
 body.quincy-interface .frame-heading, body.quincy-interface #film-controls {
   display:contents; border:0; background:none; padding:0; margin:0;
@@ -33,14 +33,10 @@ body.quincy-interface #controls button:focus-visible, body.quincy-interface #res
 body.quincy-interface #controls button:disabled { opacity:.24; cursor:default; }
 .q-button-label { position:absolute; top:calc(100% + 9px); left:50%; transform:translateX(-50%); white-space:nowrap; font-size:11px; letter-spacing:.10em; color:inherit; }
 .q-key { position:absolute; top:-10px; left:50%; transform:translateX(-50%); min-width:17px; padding:1px 4px; border:1px solid #e1e3d77a; border-radius:3px; color:#f4f2ed; background:#100d18d9; font:11px/14px ui-monospace,monospace; text-align:center; pointer-events:none; }
-body.quincy-interface #controls .view-switch button { width:60px; height:60px; min-height:0; min-width:0; padding:0; }
-body.quincy-interface #controls #mode-cinema { right:calc(var(--q-side) + 45px); bottom:205px; --q-flash:181 117 255; }
-body.quincy-interface #controls #play, body.quincy-interface #controls #frame-motion { right:calc(var(--q-side) + 108px); bottom:215px; --q-flash:87 182 255; min-height:0; min-width:0; width:80px; height:80px; padding:0; }
+body.quincy-interface #controls #play { right:calc(var(--q-side) + 62px); bottom:215px; --q-flash:87 182 255; min-height:0; min-width:0; width:80px; height:80px; padding:0; }
 body.quincy-interface #controls #hide-panel { right:var(--q-side); bottom:236px; min-height:0; min-width:0; width:44px; height:44px; padding:0; }
-#frame-motion .q-ink, #play .q-ink { width:46px; height:48px; }
+#play .q-ink { width:46px; height:48px; }
 #hide-panel .q-ink { width:28px; height:30px; }
-#mode-cinema .q-ink { width:36px; height:38px; }
-body[data-view=cinema] .q-mode-frames, body[data-view=frames] .q-mode-cinema { display:none; }
 body.quincy-interface #viewer-status { position:absolute; left:50%; bottom:193px; transform:translateX(-50%); color:#b8bcb7; font:8px Georgia,serif; letter-spacing:.17em; max-width:none; text-align:center; }
 body.quincy-interface #frame-strip {
   position:absolute; top:auto; bottom:88px; left:50%; transform:translateX(-50%); display:flex; gap:clamp(12px,1.4vw,24px);
@@ -72,9 +68,9 @@ body.quincy-interface #timeline:focus-visible { outline:1px solid #e4e5dc; outli
 body.quincy-interface #time { position:absolute; left:50%; bottom:24px; transform:translateX(-50%); color:#e0e2d8; font:13px Georgia,serif; letter-spacing:.17em; }
 body.quincy-interface #restore-controls { position:fixed; right:42px; bottom:35px; width:56px; height:56px; color:#e3e5dc; opacity:.8; background:none; }
 body.quincy-interface #restore-controls[hidden] { display:none; }
-body.quincy-interface .q-pause, body.quincy-interface [data-playing=true] .q-play, #frame-motion[aria-pressed=true] .q-play { display:none; }
-body.quincy-interface [data-playing=true] .q-pause, #frame-motion[aria-pressed=true] .q-pause { display:block; }
-#scene-entry.q-entry { display:grid; grid-template-columns:1fr 1fr; width:350px; gap:0; padding:18px 12px; bottom:40px; right:40px; background:none; color:#f1f1e7; text-shadow:0 2px 5px #000; }
+body.quincy-interface .q-pause, body.quincy-interface [data-playing=true] .q-play { display:none; }
+body.quincy-interface [data-playing=true] .q-pause { display:block; }
+#scene-entry.q-entry { display:grid; grid-template-columns:1fr; width:350px; gap:0; padding:18px 12px; bottom:40px; right:40px; background:none; color:#f1f1e7; text-shadow:0 2px 5px #000; }
 .q-entry-title { grid-column:1/-1; text-align:center; margin-bottom:20px; }
 .q-entry-title > span { display:block; font:11px Georgia,serif; letter-spacing:.45em; margin:0 0 12px; }
 .q-entry-title .q-wordmark { width:280px; height:auto; margin:auto; filter:drop-shadow(0 2px 4px #000); }
@@ -133,12 +129,10 @@ body.quincy-interface #controls #inspect-mode, body.quincy-interface #controls #
   body.quincy-interface #controls #frame-previous, body.quincy-interface #controls #frame-next { width:44px; height:44px; bottom:calc(var(--q-bottom) + 60px); }
   body.quincy-interface #frame-previous { left:var(--q-left); }
   body.quincy-interface #frame-next { left:calc(var(--q-left) + 50px); }
-  body.quincy-interface #controls #play, body.quincy-interface #controls #frame-motion { width:56px; height:56px; right:calc(var(--q-right) + 116px); bottom:calc(var(--q-bottom) + 54px); }
-  body.quincy-interface #controls #mode-cinema { width:48px; height:48px; right:calc(var(--q-right) + 58px); bottom:calc(var(--q-bottom) + 58px); }
+  body.quincy-interface #controls #play { width:56px; height:56px; right:calc(var(--q-right) + 62px); bottom:calc(var(--q-bottom) + 54px); }
   body.quincy-interface #controls #hide-panel { width:44px; height:44px; right:var(--q-right); bottom:calc(var(--q-bottom) + 60px); }
-  body.quincy-interface #controls #play .q-ink, body.quincy-interface #controls #frame-motion .q-ink { width:35px; height:38px; }
+  body.quincy-interface #controls #play .q-ink { width:35px; height:38px; }
   body.quincy-interface #frame-previous .q-ink, body.quincy-interface #frame-next .q-ink { width:29px; height:29px; }
-  body.quincy-interface #mode-cinema .q-ink { width:30px; height:32px; }
   body.quincy-interface .q-button-label { display:none; }
   body.quincy-interface #timeline { bottom:calc(var(--q-bottom) + 6px); left:var(--q-left); right:var(--q-right); transform:none; width:calc(100% - var(--q-left) - var(--q-right)); height:44px; }
   body.quincy-interface #time { bottom:calc(var(--q-bottom) - 3px); font-size:10px; letter-spacing:.13em; }
@@ -165,7 +159,6 @@ body.quincy-interface #controls #inspect-mode, body.quincy-interface #controls #
   body.quincy-interface #frame-strip { bottom:calc(var(--q-bottom) + 80px); }
   body.quincy-interface #controls #frame-previous, body.quincy-interface #controls #frame-next,
   body.quincy-interface #controls #hide-panel { bottom:calc(var(--q-bottom) + 20px); }
-  body.quincy-interface #controls #play, body.quincy-interface #controls #frame-motion { bottom:calc(var(--q-bottom) + 14px); }
-  body.quincy-interface #controls #mode-cinema { bottom:calc(var(--q-bottom) + 18px); }
+  body.quincy-interface #controls #play { bottom:calc(var(--q-bottom) + 14px); }
   body.quincy-interface #timeline { left:50%; right:auto; width:calc(100% - 380px); transform:translateX(-50%); bottom:calc(var(--q-bottom) + 20px); }
 }

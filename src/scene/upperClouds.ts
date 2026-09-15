@@ -181,6 +181,7 @@ export const createUpperClouds = (
       * (0.97 + Math.sin(motion * 0.38) * 0.03);
     backdropMaterial.opacity = (cue ? 1 : 0.75 + birth * 0.25) * controls.canopy.value;
     volume.update(cue ? cloud > .001 : birth > 0 || charge > 0, cloud, cue ? 1 : 0.32 + birth * 0.68);
+    volume.setStory(cue?.storyTime, cue?.matter);
   };
   return { root, textures: [volume.texture, volume.detailTexture, volume.coronalTransmission], noise, controls, layers, volume, update, motionTime: time, backgroundMotionTime: backgroundTime, skyLayers: SKY_LAYERS,
     dispose() { volume.dispose(); noise.dispose(); root.clear(); },

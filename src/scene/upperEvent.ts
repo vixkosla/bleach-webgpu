@@ -47,6 +47,7 @@ export type UpperEventLayout = ReturnType<typeof createUpperLayout>;
 /** Weather and matter have independent lifecycles at a fixed world scale. */
 export interface UpperAtmosphereCue {
   matter?: Readonly<MatterStoryPose>;
+  storyTime?: number;
   presence: number;
   illumination: number;
   atmosphereLight?: number;
@@ -179,7 +180,7 @@ export const createUpperEvent = (crown: THREE.Vector3, citadelOrientation = new 
     clouds.update(motion, state.birth, state.charge, state.opening, state.cloud, cue);
     matter.setStory(cue?.matter);
     matter.update(cue ? (cue.matter ? cue.matter.assembly > 0 : cue.presence > .001) : state.visible, cue ? 1 : state.birth);
-    // Authored matter forms inside the density integral, at full world scale.
+    // The authored dense plate grows about its lower world-space attachment.
     // Preserve the historical cue/inspector contract when no story is supplied.
     matter.material.opacity = cue && !cue.matter ? cue.presence : 1;
     crossLight.update(state.visible, cue ? cue.illumination : state.birth);

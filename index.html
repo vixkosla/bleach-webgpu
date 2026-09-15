@@ -110,17 +110,11 @@
 
       <nav id="scene-entry" aria-label="Просмотр сцены" hidden>
         <a href="?film=tour">Кино <span aria-hidden="true">↗</span></a>
-        <a href="?film=tour&view=frames&paused">Кадры</a>
       </nav>
 
       <nav id="controls" aria-label="Управление сценой">
-        <div id="viewer-modes" hidden>
-          <div class="view-switch" role="group" aria-label="Режим просмотра">
-            <button id="mode-cinema" type="button" aria-pressed="true">Кино</button>
-            <button id="mode-frames" type="button" aria-pressed="false">Кадры</button>
-          </div>
+        <div id="player-controls" hidden>
           <div class="frame-life"><span id="viewer-status">НЕПРЕРЫВНЫЙ ПРОЛЁТ</span>
-            <button id="frame-motion" type="button" aria-label="Остановить движение в кадре" aria-pressed="true" hidden>Ⅱ</button>
             <button id="hide-panel" type="button" aria-label="Скрыть панель управления" title="Скрыть панель · H">⌄</button>
           </div>
         </div>

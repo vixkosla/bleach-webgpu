@@ -33,13 +33,13 @@ export class SceneAtmosphereDirector {
     };
     const c = upper.clouds.controls, v = upper.clouds.volume.controls;
     set(grade.controls.story, () => 1);
-    set(grade.controls.eventLight, s => s.illumination);
-    set(grade.controls.lightReach, s => s.lightReach);
+    set(grade.controls.eventLight, s => s.illumination * (.35 + .65 * this.matterStory.cohesion));
+    set(grade.controls.lightReach, s => Math.min(s.lightReach, 1250 * this.matterStory.assembly));
     // Keep the passing street surfaces readable before the event lights them.
     scale(grade.controls.exposure, s => 1 + .8 * (1 - Math.min(1, s.illumination)));
     scale(c.canopy, s => s.precursor * .18 + s.weather * .82);
     scale(c.density, s => 1 + s.pressure * .2);
-    scale(c.clearingWidth, s => .85 + s.illumination * .15 + s.whiteSky * .12);
+    scale(c.clearingWidth, s => (.85 + s.illumination * .15 + s.whiteSky * .12) * (.32 + .68 * this.matterStory.assembly));
     scale(c.clearingLight, s => .5 + s.illumination * .5 + s.whiteSky * .55);
     scale(c.distantLight, s => .2 + s.precursor * .4 + s.illumination * 1.4);
     set(c.distantMist, s => s.precursor * .6 + s.weather * .4);
@@ -91,10 +91,11 @@ export class SceneAtmosphereDirector {
     // The page keeps its narrative cue while its existing procedural objects
     // continue evolving. Never advance presence or lighting with the life clock.
     const cue = this.motionCue;
-    cue.presence = state.presence; cue.illumination = state.illumination;
-    cue.atmosphereLight = state.atmosphereLight; cue.cloudOpacity = state.cloudOpacity;
+    cue.presence = state.presence; cue.illumination = state.illumination * (.35 + .65 * this.matterStory.cohesion);
+    cue.atmosphereLight = state.atmosphereLight * (.35 + .65 * this.matterStory.cohesion); cue.cloudOpacity = state.cloudOpacity;
     cue.distantTime = state.distantTime + lifeTime * .32;
     cue.matter = this.matterStory;
+    cue.storyTime = state.time;
     this.upper.update(21.8, state.motionTime + lifeTime * .72, cue);
   }
 

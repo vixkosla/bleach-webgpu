@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import {
   Break, Fn, If, Loop, cameraPosition, color, float, mix, modelViewMatrix,
-  modelWorldMatrix, modelWorldMatrixInverse, positionGeometry, screenCoordinate, texture3D, uniform, vec2, vec3, vec4,
+  modelWorldMatrix, modelWorldMatrixInverse, positionGeometry, screenCoordinate, texture3D, uniform, uniformArray, vec2, vec3, vec4,
 } from 'three/tsl';
 import { ImprovedNoise } from 'three/addons/math/ImprovedNoise.js';
 import { smoothstep } from '../utils/math';
@@ -11,6 +11,8 @@ import { CRESCENT_SHAFT_ANGLE, crescentParallelShafts, crescentShaftSource } fro
 import type { UpperEventLayout } from './upperEvent';
 import { UPPER_ATMOSPHERE } from './upperAtmosphereLayout';
 import type { UpperWeatherCeiling } from './upperWeatherCeiling';
+import { CloudStoryState, CLOUD_STORY_CELLS } from '../cinematic/CloudStoryState';
+import { writeMatterGrowth, type MatterStoryPose } from '../cinematic/MatterStoryState';
 
 // Preserve the original bank sizes, diagonal slopes and relative rhythm.
 // Translate their centres outwards as a group, with deeper Z placement.
@@ -161,11 +163,28 @@ export const createUpperCloudVolume = (
   const cloudToMoon = new THREE.Matrix4().makeRotationFromQuaternion(
     layout.orientation.clone().invert().multiply(stormOrientation));
   const sourceFrame = uniform(new THREE.Matrix3().setFromMatrix4(cloudToMoon));
+  const story = new CloudStoryState();
+  const growth = uniform(new THREE.Vector3(1, 1, 1)), life = uniform(0);
+  const centers = CLOUD_STORY_CELLS.map(() => new THREE.Vector4());
+  const shapes = CLOUD_STORY_CELLS.map(() => new THREE.Vector4(1, 1, 1, 1.3));
+  const cellCenters = uniformArray<'vec4'>(centers, 'vec4'), cellShapes = uniformArray<'vec4'>(shapes, 'vec4');
+  const setStory = (time?: number, matter?: Readonly<MatterStoryPose>) => {
+    life.value = time === undefined ? 0 : 1;
+    writeMatterGrowth(matter, growth.value);
+    story.update(time ?? 0);
+    CLOUD_STORY_CELLS.forEach((spec, i) => {
+      const cell = story.cells[i]!, size = .16 + .84 * cell.growth;
+      centers[i]!.set(spec.center[0] + spec.drift[0] * cell.drift,
+        spec.center[1] + spec.drift[1] * cell.drift, spec.center[2] + spec.drift[2] * cell.drift, 1);
+      shapes[i]!.set(1 / (spec.extent[0] * size), 1 / (spec.extent[1] * size),
+        1 / (spec.extent[2] * (.35 + .65 * cell.growth)), .34 + 1.2 * cell.erosion);
+    });
+  };
   const centralTexture = createCentralCloudTexture(SPAN, OFFSET, cloudToMoon);
   const coronalTransmission = createCoronalTransmissionTexture(texture, 64, cloudToMoon.clone().invert());
   const controls = { density: uniform(2.4), light: uniform(0.95), cavity: uniform(1.8), steps: uniform(64), detail: uniform(0.85), rays: uniform(12), rayClouds: uniform(1), sourceScale: uniform(1),
     centralClouds: uniform(1), centralLight: uniform(0.75), centralRays: uniform(0.22),
-    bankSpread: uniform(0), centralLift: uniform(0), centralFold: uniform(0),
+    bankSpread: uniform(0), centralLift: uniform(0), centralFold: uniform(0), condensationFrequency: uniform(.28),
     royalGlow: uniform(UPPER_ATMOSPHERE.castle.strength), royalRadius: uniform(UPPER_ATMOSPHERE.castle.radius) };
   const material = new THREE.MeshBasicNodeMaterial({ color: 0xffffff, side: THREE.BackSide,
     transparent: true, depthTest: false, depthWrite: false, fog: false });
@@ -217,6 +236,10 @@ export const createUpperCloudVolume = (
         const field = texture3D(texture, bankUv, 0).toVar();
         const local = p.mul(vec3(SPAN.x, SPAN.y, SPAN.z)).add(vec3(OFFSET.x, OFFSET.y, OFFSET.z));
         const moonLocal = sourceFrame.mul(local).toVar();
+        // The cloud shoulders follow the rooted expansion, but keep weather's
+        // softer depth. Their body is resolved by the same existing ray march.
+        const formingLocal = moonLocal.sub(vec3(0, growth.y.sub(1), 0))
+          .div(vec3(growth.x.mul(.55).add(.45), growth.y.mul(.60).add(.40), growth.z.mul(.35).add(.65))).toVar();
         const zone = UPPER_ATMOSPHERE.weather;
         const weatherRadius = moonLocal.xy.div(vec2(...zone.axes)).length();
         const weatherCoverage = ceiling.coverage(modelWorldMatrix.mul(vec4(p, 1)).xyz).toVar();
@@ -229,6 +252,24 @@ export const createUpperCloudVolume = (
         const fine = texture3D(detailTexture, local.mul(1.63).sub(wind.mul(1.2)).add(0.37), 0).toVar();
         // Fade sub-step frequencies on long side rays to avoid boiling specks.
         const fineWeight = opticalStep.smoothstep(0.028, 0.082).oneMinus();
+        const formingDensity = float(0).toVar();
+        If(life.greaterThan(0), () => {
+          // Resolve the condensation folds in their own expanding frame.
+          // A world-only sample became almost constant across young cells,
+          // exposing smooth oval stamps around the much smaller plate.
+          const condensation = texture3D(detailTexture, formingLocal.mul(controls.condensationFrequency).add(wind.mul(.7)), 0).r.toVar();
+          Loop({ start: 0, end: CLOUD_STORY_CELLS.length, type: 'int', condition: '<' }, ({ i }) => {
+            const shape = cellShapes.element(i), center = cellCenters.element(i);
+            const cellPoint = formingLocal.sub(center.xyz).mul(shape.xyz);
+            // Condensation lowers a spatial threshold: little ridges join
+            // into a dense body, then erosion eats inward through its folds.
+            // Shared billows/detail avoid separate spherical cloud stamps.
+            const volume = float(1).sub(cellPoint.dot(cellPoint).mul(.55))
+              .add(condensation.sub(.5).mul(.90)).add(fine.r.sub(.5).mul(.045).mul(fineWeight));
+            formingDensity.addAssign(volume.sub(shape.w).max(0).pow(1.4).mul(8));
+          });
+        });
+        formingDensity.mulAssign(weatherCoverage.mul(deformationEnvelope));
         const eddies = billows.r.mul(0.7).add(fine.r.mul(0.3));
         const erosion = billows.r.oneMinus().mul(0.12)
           .add(fine.r.oneMinus().mul(0.06).mul(fineWeight)).mul(controls.detail);
@@ -287,7 +328,7 @@ export const createUpperCloudVolume = (
         const mistDensity = p.abs().x.max(p.abs().y).max(p.abs().z)
           .smoothstep(0.35, 0.49).oneMinus().mul(0.0025).mul(weatherMask);
         const density = cloudDensity.add(mistDensity).add(fragmentDensity)
-          .add(centralDensity).add(centralVeil).toVar();
+          .add(centralDensity).add(centralVeil).add(formingDensity).toVar();
         const alpha = density.mul(opticalStep).mul(-3.8).exp().oneMinus();
         const lightDistance = local.sub(vec3(0, 0, -0.6)).length();
         // Approximate dual-lobe scattering: light wraps into thin rims and
@@ -312,6 +353,10 @@ export const createUpperCloudVolume = (
         const cloudColor = color(0x24212c).mul(0.28)
           .add(color(0xe1dce4).mul(illumination).mul(smallRelief))
           .add(color(0xffd29a).mul(royalScatter));
+        const formingTransmission = formingDensity.mul(-.9).exp();
+        const formingColor = color(0x16141e).mul(.36)
+          .add(color(0xe1dce4).mul(illumination).mul(smallRelief)
+            .mul(formingTransmission.mul(.82).add(.18)));
         // Strong parallel shafts of light crossing the cloud gaps. World
         // coordinates keep them attached to the event throughout an orbit.
         const distanceFromRim = moonLocal.xy.length().sub(controls.sourceScale).max(0);
@@ -344,6 +389,7 @@ export const createUpperCloudVolume = (
         const centralShaftColor = color(0xfff6e8).mul(central.g.pow(2))
           .mul(exposure).mul(controls.centralLight).mul(1.8);
         const sampleColor = cloudColor.mul(cloudDensity)
+          .add(formingColor.mul(formingDensity))
           .add(fragmentColor.mul(fragmentDensity))
           .add(centralColor.mul(centralDensity))
           .add(centralShaftColor.mul(centralVeil))
@@ -360,6 +406,7 @@ export const createUpperCloudVolume = (
   };
   setDepth(float(-1e8));
   return { scene, mesh, texture, detailTexture, centralTexture, coronalTransmission, material, controls, sourceFrame, setDepth,
+    story, growth, life, centers, shapes, setStory,
     update: (visible: boolean, opacity: number, sourceScale = 1) => {
       mesh.visible = visible; material.opacity = opacity; controls.sourceScale.value = sourceScale;
     },
