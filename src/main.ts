@@ -324,6 +324,9 @@ const init = async (): Promise<void> => {
   });
 
   const scene = new THREE.Scene();
+  // The world root never moves. Leave world-matrix propagation enabled so
+  // animated descendants still update, without dirtying every static branch.
+  scene.matrixAutoUpdate = false;
   scene.background = new THREE.Color(0x090611);
   scene.fog = tourMode ? null : new THREE.FogExp2(0x16122e, 0.0015);
 
@@ -466,6 +469,12 @@ const init = async (): Promise<void> => {
   tower.group.position.y = CITY_DECK_Y * (1 - tower.group.scale.y);
   enableArchitecturalShadows(tower.group);
   scene.add(tower.group);
+  // Architecture and crystal-cell transforms are authored once. LOD visibility,
+  // camera movement, material uniforms and world-matrix updates remain dynamic.
+  for (const root of [city, tower.group]) root.traverse(object => {
+    object.updateMatrix();
+    object.matrixAutoUpdate = false;
+  });
   // AO describes the structural edges itself. Explicit near-black line meshes
   // made every little bevel look inked and also entered the normal/depth MRT.
   if (aoOnly) for (const root of [city, tower.group]) root.traverse(object => {
@@ -709,9 +718,24 @@ const init = async (): Promise<void> => {
     && !url.searchParams.has('ft')
     && !(tourMode && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   let previousNow = performance.now();
+  let renderRevision = 0;
+  let renderedRevision = -1;
+  let renderedTime = NaN;
+  let renderedLifeTime = NaN;
+  let renderedView: SceneViewMode | null = null;
+  let renderedStill = false;
+  let renderedFov = NaN;
+  const renderedPosition = new THREE.Vector3(NaN, NaN, NaN);
+  const renderedQuaternion = new THREE.Quaternion(NaN, NaN, NaN, NaN);
+  let lastUpperUiTime = NaN;
+  let lastShownTime = '';
+  let lastTimeLabel = '';
+  let lastProgress = '';
+  let lastFlash = '';
+  let lastBodyTime = '';
   // A suspended tab resumes from the same story beat. Its first new frame
   // must not turn the background interval into a camera/weather jump.
-  document.addEventListener('visibilitychange', () => { previousNow = performance.now(); });
+  document.addEventListener('visibilitychange', () => { previousNow = performance.now(); renderRevision++; });
   let uiIdleTimer = 0;
   let performanceWindowStart = previousNow;
   let performanceFrameCount = 0;
@@ -721,6 +745,7 @@ const init = async (): Promise<void> => {
   // DOM writes happen only once per 750ms window. This keeps the monitor
   // useful on a phone without turning the monitor itself into frame workload.
   const updatePerformanceMonitor = (wallNow: number): void => {
+    if (performanceMonitor.style.display === 'none' || landingMode) return;
     if (document.visibilityState !== 'visible' || wallNow < performanceWarmupUntil) {
       performanceWindowStart = wallNow;
       performanceFrameCount = 0;
@@ -1079,7 +1104,15 @@ const init = async (): Promise<void> => {
     }
   });
 
+  const initialRenderSize = renderer.getSize(new THREE.Vector2());
+  let viewportWidth = initialRenderSize.x;
+  let viewportHeight = initialRenderSize.y;
+  let viewportRatio = renderer.getPixelRatio();
   const resize = (): void => {
+    const ratio = getRenderPixelRatio();
+    if (viewportWidth === window.innerWidth && viewportHeight === window.innerHeight && viewportRatio === ratio) return;
+    viewportWidth = window.innerWidth; viewportHeight = window.innerHeight; viewportRatio = ratio;
+    renderRevision++;
     camera.aspect = window.innerWidth / window.innerHeight;
     if (inspectionPreset === 'upper' && upperEvent && !inspectionCameraMoved) {
       // Keep the selected final-shot lens/height when adapting the framing.
@@ -1091,11 +1124,13 @@ const init = async (): Promise<void> => {
       orbitControls.update();
     }
     camera.updateProjectionMatrix();
-    renderer.setPixelRatio(getRenderPixelRatio());
+    renderer.setPixelRatio(ratio);
     renderer.setSize(window.innerWidth, window.innerHeight);
     if (frameTransition.active && viewMode === 'frames' && selectedFrame >= 0) chooseFrame(selectedFrame);
   };
   window.addEventListener('resize', resize);
+  // Catch a phone rotation that happened while geometry/shaders were loading.
+  resize();
 
   if (tour && storyAtmosphere && !inspectionPreset) {
     await showLoading('Готовим движение…');
@@ -1120,7 +1155,7 @@ const init = async (): Promise<void> => {
   previousNow = performance.now();
   let firstFrame = true;
   renderer.setAnimationLoop(() => {
-    if (deviceStatus.failed) return;
+    if (deviceStatus.failed || document.hidden) return;
     const wallNow = performance.now();
     // WebGPU software fallbacks can render only a few frames per second. Keep the
     // edit locked to wall time while still rejecting very long background-tab jumps.
@@ -1206,11 +1241,14 @@ const init = async (): Promise<void> => {
       // Old film FX belong to a different lighting/timing prototype. Do not
       // double-render them or let them pollute the AO masks during this study.
       getsuga.group.visible = wordmark.group.visible = lightning.group.visible = embers.group.visible = false;
-      if (upperTimeline) upperTimeline.value = upperTime.toFixed(3);
-      if (upperTimeOutput) upperTimeOutput.value = `${upperTime.toFixed(2)} s`;
-      for (const button of upperBeatButtons) {
-        const beat = UPPER_BEATS[Number(button.dataset.upperBeat)];
-        button.setAttribute('aria-pressed', String(!!beat && Math.abs(upperTime - beat.time) < 0.01));
+      if (upperTime !== lastUpperUiTime) {
+        lastUpperUiTime = upperTime;
+        if (upperTimeline) upperTimeline.value = upperTime.toFixed(3);
+        if (upperTimeOutput) upperTimeOutput.value = `${upperTime.toFixed(2)} s`;
+        for (const button of upperBeatButtons) {
+          const beat = UPPER_BEATS[Number(button.dataset.upperBeat)];
+          button.setAttribute('aria-pressed', String(!!beat && Math.abs(upperTime - beat.time) < 0.01));
+        }
       }
     } else {
       getsuga.update(currentTime);
@@ -1221,7 +1259,8 @@ const init = async (): Promise<void> => {
 
     const impactFlash = inspectionPreset || tour ? 0 : pulse(BEATS.impact + 0.12, 0.58, currentTime);
     const whiteout = inspectionPreset || tour ? 0 : pulse(BEATS.impact + 0.55, 1.2, currentTime);
-    flash.style.opacity = Math.min(0.96, impactFlash * 0.84 + whiteout * 0.24).toFixed(3);
+    const flashOpacity = Math.min(0.96, impactFlash * 0.84 + whiteout * 0.24).toFixed(3);
+    if (flashOpacity !== lastFlash) { flash.style.opacity = flashOpacity; lastFlash = flashOpacity; }
     const aftermath = smoothstep(BEATS.moonBirth, BEATS.scaleReveal, currentTime);
     renderer.toneMappingExposure = inspectionPreset || tour
       ? aoOnly ? 1 : 0.9
@@ -1240,13 +1279,30 @@ const init = async (): Promise<void> => {
 
     if (!tourMode) titleDirector.update(currentTime);
     const shownTime = pacing ? pacing.filmAt(currentTime) : currentTime;
-    timeline.value = shownTime.toFixed(3);
-    timeOutput.value = formatTime(shownTime, displayDuration);
-    if (tourMode) timeline.style.setProperty('--q-progress', `${(shownTime / displayDuration * 100).toFixed(1)}%`);
+    const timelineTime = shownTime.toFixed(3);
+    if (timelineTime !== lastShownTime) { timeline.value = timelineTime; lastShownTime = timelineTime; }
+    const timeLabel = formatTime(shownTime, displayDuration);
+    if (timeLabel !== lastTimeLabel) { timeOutput.value = timeLabel; lastTimeLabel = timeLabel; }
+    if (tourMode) {
+      const progress = `${(shownTime / displayDuration * 100).toFixed(1)}%`;
+      if (progress !== lastProgress) { timeline.style.setProperty('--q-progress', progress); lastProgress = progress; }
+    }
 
     uiIdleTimer += delta;
     navigation?.update(viewMode, currentTime, selectedFrame, frameTransition.active, frameMotion);
     if (!tourMode && playing && !inspectionPreset && uiIdleTimer > 4 && url.searchParams.get('hud') !== '1') setHud(false);
+
+    // A fully paused tour has no time-driven shaders or temporal accumulation.
+    // Keep its final image; resume on playback, live atmosphere, travel, seek,
+    // viewport changes or tab restoration. Debug/inspection keep continuous
+    // rendering so direct live edits to uniforms and cameras remain observable.
+    const still = !!tour && !inspectionPreset && !playing && !frameTransition.active
+      && (viewMode !== 'frames' || !frameMotion);
+    if (!firstFrame && still && renderedStill && url.searchParams.get('debug') !== '1'
+      && renderedTime === currentTime && renderedLifeTime === frameLifeTime
+      && renderedView === viewMode && renderedRevision === renderRevision
+      && renderedFov === camera.fov && renderedPosition.equals(camera.position)
+      && renderedQuaternion.equals(camera.quaternion)) return;
 
     try {
       if (inspectionPreset || tour) inspectionRenderPipeline.render();
@@ -1258,16 +1314,20 @@ const init = async (): Promise<void> => {
       return;
     }
     if (deviceStatus.failed) return;
+    renderedStill = still; renderedTime = currentTime; renderedLifeTime = frameLifeTime;
+    renderedView = viewMode; renderedRevision = renderRevision;
+    renderedFov = camera.fov; renderedPosition.copy(camera.position); renderedQuaternion.copy(camera.quaternion);
     if (firstFrame) {
       firstFrame = false;
       previousNow = performance.now();
       loading.hidden = true;
       performance.mark('scene-ready');
       performance.measure('scene-startup', 'scene-start', 'scene-ready');
+      document.body.dataset.ready = 'true';
     }
     updatePerformanceMonitor(wallNow);
-    document.body.dataset.ready = 'true';
-    document.body.dataset.time = currentTime.toFixed(3);
+    const bodyTime = currentTime.toFixed(3);
+    if (bodyTime !== lastBodyTime) { document.body.dataset.time = bodyTime; lastBodyTime = bodyTime; }
   });
 };
 
