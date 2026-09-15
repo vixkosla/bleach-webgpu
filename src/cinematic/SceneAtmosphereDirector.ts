@@ -3,6 +3,7 @@ import type { createArchitectureGrade } from '../materials/architectureGrade';
 import type { createCityHaze } from '../materials/cityHaze';
 import type { SceneStoryState } from './SceneStoryState';
 import { smootherstep } from '../utils/math';
+import { MatterStoryState } from './MatterStoryState';
 
 type Scalar = { value: number };
 type Binding = { control: Scalar; initial: number; sample: (state: SceneStoryState) => number };
@@ -10,6 +11,7 @@ type Binding = { control: Scalar; initial: number; sample: (state: SceneStorySta
 /** Direct existing weather, without rebuilding meshes or turning the sky into
  * camera-attached effects. Restore every owned control on return to inspection. */
 export class SceneAtmosphereDirector {
+  readonly matterStory = new MatterStoryState();
   private active = false;
   private readonly bindings: Binding[] = [];
   private readonly layerOrigins;
@@ -51,9 +53,9 @@ export class SceneAtmosphereDirector {
     scale(c.cloudRelief, s => 1 + s.pressure * .4);
     scale(c.royalGlow, s => .08 + s.illumination * .92);
     scale(v.density, s => 1 + s.pressure * .18);
-    set(v.bankSpread, s => .1 * s.opening - .025 * s.pressure);
-    set(v.centralLift, s => s.opening * .02 - s.pressure * .015);
-    set(v.centralFold, s => s.pressure * .7 + s.opening * .85);
+    set(v.bankSpread, s => .1 * s.opening - .025 * s.pressure + this.matterStory.wake * .012);
+    set(v.centralLift, s => s.opening * .02 - s.pressure * .015 + this.matterStory.release * .012);
+    set(v.centralFold, s => s.pressure * .7 + s.opening * .85 + this.matterStory.release * .14);
     scale(v.centralClouds, s => .82 + s.pressure * .35 + s.opening * .18);
     scale(v.centralLight, s => .25 + s.illumination * .75 + s.whiteSky * .16);
     scale(v.centralRays, s => .05 + s.illumination * .9);
@@ -73,6 +75,7 @@ export class SceneAtmosphereDirector {
 
   update(state: SceneStoryState, lifeTime = 0): void {
     this.active = true;
+    this.matterStory.update(state.time);
     for (const binding of this.bindings) binding.control.value = binding.sample(state);
     for (let i = 0; i < this.upper.clouds.layers.length; i++) {
       const layer = this.upper.clouds.layers[i]!, origin = this.layerOrigins[i]!;
@@ -91,6 +94,7 @@ export class SceneAtmosphereDirector {
     cue.presence = state.presence; cue.illumination = state.illumination;
     cue.atmosphereLight = state.atmosphereLight; cue.cloudOpacity = state.cloudOpacity;
     cue.distantTime = state.distantTime + lifeTime * .32;
+    cue.matter = this.matterStory;
     this.upper.update(21.8, state.motionTime + lifeTime * .72, cue);
   }
 
@@ -102,6 +106,7 @@ export class SceneAtmosphereDirector {
       layer.density.value = this.layerOrigins[i]!.density;
     });
     this.upper.matter.material.opacity = 1;
+    this.upper.matter.setStory();
     this.active = false;
   }
 }

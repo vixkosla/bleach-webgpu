@@ -8,6 +8,7 @@ import type { UpperEventLayout } from './upperEvent';
 import { UPPER_ATMOSPHERE } from './upperAtmosphereLayout';
 import { crescentContourRadiance } from './crescentLight';
 import { createUpperMatterField } from './upperMatterField';
+import type { MatterStoryPose } from '../cinematic/MatterStoryState';
 
 /** Absorbing, turbulent Getsuga matter, independent of the grey weather. */
 export const createUpperGetsugaMatter = (
@@ -16,6 +17,14 @@ export const createUpperGetsugaMatter = (
 ) => {
   const scene = new THREE.Scene(); scene.name = 'upper-getsuga-dark-matter';
   const controls = { strength: uniform(1), density: uniform(9.0), coreDensity: uniform(110), speed: uniform(1), offset: uniform(0), birth: uniform(0), roots: uniform(1), wisps: uniform(1), flameTips: uniform(1), scatter: uniform(1), openings: uniform(1), contour: uniform(1.15), cavityLight: uniform(0.45) };
+  const story = { assembly: uniform(1), cohesion: uniform(1), compression: uniform(0), release: uniform(0), wake: uniform(0) };
+  const setStory = (pose?: Readonly<MatterStoryPose>) => {
+    story.assembly.value = pose?.assembly ?? 1;
+    story.cohesion.value = pose?.cohesion ?? 1;
+    story.compression.value = pose?.compression ?? 0;
+    story.release.value = pose?.release ?? 0;
+    story.wake.value = pose?.wake ?? 0;
+  };
   const zone = UPPER_ATMOSPHERE.matter;
   const wispZone = UPPER_ATMOSPHERE.wisps;
   const span = new THREE.Vector3(3.8, 3.8, 1.6);
@@ -31,7 +40,7 @@ export const createUpperGetsugaMatter = (
   mesh.scale.copy(span).multiplyScalar(layout.radius); scene.add(mesh);
 
   const matterClock = clock.mul(controls.speed).add(controls.offset);
-  const field = createUpperMatterField(noise, detail, matterClock);
+  const field = createUpperMatterField(noise, detail, matterClock, story.compression, story.release, story.wake);
   // Compatibility handle for inspecting the same source on the solid skin.
   const surfaceActivity = Fn(([point]: [THREE.Node<'vec3'>]) => {
     return field.flow(point).y;
@@ -68,6 +77,14 @@ export const createUpperGetsugaMatter = (
         const skinDistance = surface.w.max(0);
         const flow = field.flow(local).toVar();
         const fold = flow.x, source = flow.y, ink = flow.w;
+        // A broad front travels from the lower, heavy side through the SAME
+        // volume. Density condenses behind it instead of fading a finished
+        // transparent moon. The neutral pose is exactly one everywhere.
+        const directionFromSource = local.xy.div(local.xy.length().max(0.0001))
+          .dot(vec2(Math.cos(-0.55), Math.sin(-0.55))).oneMinus().mul(0.5);
+        const front = story.assembly.mul(1.30).sub(0.15);
+        const gathering = directionFromSource.add(fold.sub(0.5).mul(0.06))
+          .sub(front).smoothstep(-0.10, 0.10).oneMinus().toVar();
         // A smooth analytic radius contains the optically thick cloud core.
         // The moving field still shades it and shapes all escaping matter;
         // it must not turn the clean inner arc into a stepped, wavy contour.
@@ -79,7 +96,8 @@ export const createUpperGetsugaMatter = (
         const outward = local.xy.length().smoothstep(0.74, 1.04);
         // The dense body follows the actual lunar skin. Its thickness varies
         // with source activity; there is no separate circular source shell.
-        const reach = source.mul(0.12).add(0.14);
+        const reach = source.mul(0.12).add(0.14)
+          .mul(story.release.mul(0.25).sub(story.compression.mul(0.12)).add(1));
         const sourceBody = skinDistance.div(reach).pow(2).mul(-0.5).exp()
           .mul(surface.x.smoothstep(-0.85, 0.25).mul(0.65).add(0.35))
           .mul(source.mul(0.45).add(0.55)).mul(outward.mul(0.93).add(0.07));
@@ -95,7 +113,7 @@ export const createUpperGetsugaMatter = (
         const clumps = fold.smoothstep(threshold, threshold.add(0.17));
         const arc = atan(local.y, local.x).abs().smoothstep(Math.PI - 0.20, Math.PI - 0.13).oneMinus();
         const core = signedDensityDistance.smoothstep(-0.012, 0.018).oneMinus()
-          .mul(arc).mul(controls.coreDensity);
+          .mul(arc).mul(controls.coreDensity).mul(story.cohesion.pow(2)).mul(gathering);
         // The same patches darken the solid skin and feed dense roots.
         // Turbulent folds erode the transition without severing that contact.
         const throat = skinDistance.div(0.09).negate().exp().mul(source)
@@ -117,22 +135,22 @@ export const createUpperGetsugaMatter = (
         // disappear into the light. No constant-density grey veil is added.
         const torn = fold.smoothstep(0.48, 0.69);
         const cloudlets = torn.mul(wispReach).mul(wispDepth).mul(wispBorder)
-          .mul(0.20).mul(controls.wisps);
+          .mul(0.20).mul(controls.wisps).mul(story.wake.mul(0.35).add(1));
         const tips = field.tips(local).mul(fold.smoothstep(0.28, 0.60).mul(0.50).add(0.50))
           .mul(controls.flameTips).mul(controls.roots);
         const inkDensity = clumps.mul(sourceBody).add(innerEddy.mul(fold.smoothstep(0.4, 0.64)))
           .mul(boundary).add(throat).add(cloudlets).add(tips)
-          .mul(controls.density).add(core).mul(controls.birth).mul(controls.strength).toVar();
+          .mul(controls.density).mul(gathering).add(core).mul(controls.birth).mul(controls.strength).toVar();
         // A small amount of translucent gas redistributes light from the
         // actual moving rim openings. It shares the folded cloud texture;
         // opaque ink absorbs that light, and gaps remain transparent.
         const gas = fold.smoothstep(0.30, 0.64).mul(wispDepth).mul(wispBorder)
           .mul(skinDistance.div(0.48).pow(2).mul(-0.5).exp())
-          .mul(0.85).mul(controls.scatter).mul(controls.birth).mul(controls.strength).toVar();
+          .mul(0.85).mul(controls.scatter).mul(gathering).mul(controls.birth).mul(controls.strength).toVar();
         const sourceLight = crescentContourRadiance(local, signedDensityDistance,
           field.surfaceNormal(local), lunarRay, matterClock)
           .mul(controls.contour).mul(controls.openings)
-          .mul(controls.birth).mul(controls.strength).toVar();
+          .mul(gathering).mul(story.cohesion).mul(controls.birth).mul(controls.strength).toVar();
         const transmission = inkDensity.mul(-0.85).exp();
         // A pale, swirling medium fills the open side of the analytic lunar
         // surface, almost to its inner edge. It occupies real depth and uses
@@ -144,7 +162,7 @@ export const createUpperGetsugaMatter = (
         const cavityGas = inside.mul(cavityDepth)
           .mul(fold.smoothstep(0.28, 0.68).mul(0.85).add(0.35)).mul(1.65)
           .mul(transmission).mul(controls.cavityLight)
-          .mul(controls.birth).mul(controls.strength).toVar();
+          .mul(gathering).mul(story.cohesion).mul(controls.birth).mul(controls.strength).toVar();
         const cavityColor = color(0xf4f4fa)
           .mul(fold.smoothstep(0.30, 0.70).mul(0.70).add(1.05));
         // Thin gas scatters the recessed sources; dense ink extinguishes
@@ -181,7 +199,7 @@ export const createUpperGetsugaMatter = (
     })();
   };
   setDepth(float(-1e8));
-  return { scene, mesh, material, controls, field, surfaceActivity, surfaceFrame, setDepth,
+  return { scene, mesh, material, controls, story, setStory, field, surfaceActivity, surfaceFrame, setDepth,
     update: (visible: boolean, birth: number) => { mesh.visible = visible && birth > 0.001; controls.birth.value = birth; },
     dispose: () => { mesh.geometry.dispose(); material.dispose(); scene.clear(); },
   };

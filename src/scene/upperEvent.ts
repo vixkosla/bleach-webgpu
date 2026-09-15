@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu';
+import type { MatterStoryPose } from '../cinematic/MatterStoryState';
 import { atan, attribute, color, mix, positionGeometry, uniform } from 'three/tsl';
 import { createUpperClouds } from './upperClouds';
 import { createUpperGetsugaMatter } from './upperGetsugaMatter';
@@ -43,9 +44,9 @@ export const createUpperLayout = (crown: THREE.Vector3, citadelOrientation = new
 
 export type UpperEventLayout = ReturnType<typeof createUpperLayout>;
 
-/** Story cues keep weather alive before and after the provisional lunar fade.
- * Density shape/scale stays mature; illumination has its own slower envelope. */
+/** Weather and matter have independent lifecycles at a fixed world scale. */
 export interface UpperAtmosphereCue {
+  matter?: Readonly<MatterStoryPose>;
   presence: number;
   illumination: number;
   atmosphereLight?: number;
@@ -176,10 +177,11 @@ export const createUpperEvent = (crown: THREE.Vector3, citadelOrientation = new 
     motion = Number.isFinite(motionTime) ? motionTime : 0;
     group.visible = state.visible;
     clouds.update(motion, state.birth, state.charge, state.opening, state.cloud, cue);
-    matter.update(cue ? cue.presence > .001 : state.visible, cue ? 1 : state.birth);
-    // Temporary entry/exit only: fade the same complete volume, never shrink
-    // it into a different object. The sky is not gated by this visibility.
-    matter.material.opacity = cue ? cue.presence : 1;
+    matter.setStory(cue?.matter);
+    matter.update(cue ? (cue.matter ? cue.matter.assembly > 0 : cue.presence > .001) : state.visible, cue ? 1 : state.birth);
+    // Authored matter forms inside the density integral, at full world scale.
+    // Preserve the historical cue/inspector contract when no story is supplied.
+    matter.material.opacity = cue && !cue.matter ? cue.presence : 1;
     crossLight.update(state.visible, cue ? cue.illumination : state.birth);
     event.scale.setScalar(state.scale);
     crescentMaterial.opacity = state.birth;

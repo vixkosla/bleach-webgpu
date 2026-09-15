@@ -13,15 +13,24 @@ export const MATTER_TIPS = [
 /** One lunar-space flow for the solid skin, dense roots and eroding folds. */
 export const createUpperMatterField = (
   noise: THREE.Data3DTexture, detail: THREE.Data3DTexture, time: THREE.Node<'float'>,
+  compression: THREE.Node<'float'> = float(0), release: THREE.Node<'float'> = float(0),
+  wake: THREE.Node<'float'> = float(0),
 ) => {
   const flow = Fn(([point]: [THREE.Node<'vec3'>]) => {
-    const q = point.mul(vec3(0.17, 0.23, 0.17))
+    // Strain belongs to the escaping folds, not the analytic lunar radius.
+    // A delayed tangential wake follows the initial outward displacement.
+    const outside = point.xy.length().smoothstep(0.78, 1.45);
+    const strain = release.mul(0.14).sub(compression.mul(0.07)).mul(outside);
+    const drift = vec3(point.y.negate(), point.x, point.z.mul(0.35))
+      .mul(wake.mul(0.09).mul(outside));
+    const flowing = point.mul(strain.oneMinus()).sub(drift);
+    const q = flowing.mul(vec3(0.17, 0.23, 0.17))
       .add(vec3(time.mul(0.0028), time.mul(-0.004), time.mul(0.0017)));
     const warp = texture3D(noise, q.mul(0.63).add(0.37), 0).r;
     const curl = vec3(point.y.negate(), point.x, point.z.mul(0.3))
       .mul(warp.sub(0.5).mul(0.11));
     const ink = texture3D(noise, q.add(curl).add(vec3(0.31, 0.73, 0.17)), 0).r;
-    const creases = texture3D(detail, point.mul(vec3(1.05, 0.46, 0.78))
+    const creases = texture3D(detail, flowing.mul(vec3(1.05, 0.46, 0.78))
       .add(vec3(time.mul(-0.019), time.mul(-0.027), time.mul(0.009)))
       .add(warp.mul(0.13)), 0);
     return vec4(ink.mul(0.66).add(creases.r.mul(0.28)).add(creases.g.mul(0.06)),
@@ -37,12 +46,13 @@ export const createUpperMatterField = (
       const tangent = vec2(-Math.sin(tip.angle), Math.cos(tip.angle));
       const along = point.xy.dot(axis).sub(0.94);
       const breathing = time.mul(0.92).add(tip.phase).sin().mul(0.14).add(0.86);
-      const reach = breathing.mul(tip.reach);
+      const reach = breathing.mul(tip.reach)
+        .mul(release.mul(0.55).sub(compression.mul(0.28)).add(wake.mul(0.12)).add(1));
       const u = along.div(reach).clamp(0, 1);
       // Broad roots stay slow. The travelling bend accelerates into a thin,
       // pointed tip; neighbouring accents have unequal phase and reach.
       const wave = u.mul(7.5).sub(time.mul(2.35)).add(tip.phase).sin();
-      const bend = u.pow(1.35).mul(wave.mul(0.026).add(u.mul(0.045)));
+      const bend = u.pow(1.35).mul(wave.mul(0.026).add(u.mul(wake.mul(0.08).add(0.045))));
       const width = u.oneMinus().pow(0.8).mul(tip.width).add(0.009);
       const across = point.xy.dot(tangent).sub(bend).div(width);
       const depth = point.z.sub(tip.depth).sub(u.mul(0.055).mul(wave))
